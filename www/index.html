@@ -58,6 +58,10 @@
   .hint { font-size:12px; color:#6b7079; margin:4px 0; }
   .stamp { font-size:11px; color:#9aa0a8; text-align:center; margin-top:20px; }
 </style>
+  <link rel="manifest" href="manifest.webmanifest">
+  <meta name="apple-mobile-web-app-capable" content="yes">
+  <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+  <meta name="apple-mobile-web-app-title" content="RF Survey">
 </head>
 <body>
 <header class="app">
@@ -163,7 +167,7 @@
     <button class="sm ghost" onclick="addPhoto()">+ Add photo / attachment</button>
   </section>
 
-  <div class="stamp">build v2026-09-07-k</div>
+  <div class="stamp">build v2026-09-07-l</div>
 </main>
 
 <iframe id="printFrame" style="position:fixed;width:0;height:0;border:0;left:-9999px"></iframe>
@@ -561,35 +565,53 @@ function showTip(msg){
   t.textContent = msg; t.style.opacity = "1";
   clearTimeout(showTip._t); showTip._t = setTimeout(() => { t.style.opacity = "0"; }, 4000);
 }
-async function cfDown(bytes, signal){
+const SPEED_HOST = "https://speed.cloudflare.com";
+function timedFetch(url, opts, ms){
+  const ac = new AbortController();
+  const t = setTimeout(() => ac.abort(new Error("timeout")), ms);
+  return fetch(url, { ...opts, signal:ac.signal, cache:"no-store" }).finally(() => clearTimeout(t));
+}
+async function cfDown(bytes, ms){
   const t0 = performance.now();
-  const r = await fetch(`https://speed.cloudflare.com/__down?bytes=${bytes}`, { cache:"no-store", signal });
+  const r = await timedFetch(`${SPEED_HOST}/__down?bytes=${bytes}`, {}, ms);
+  if (!r.ok) throw new Error("down HTTP " + r.status);
   const buf = await r.arrayBuffer();
   return { bytes: buf.byteLength, ms: performance.now() - t0 };
 }
-async function cfUp(bytes, signal){
+async function cfUp(bytes, ms){
   const t0 = performance.now();
-  await fetch("https://speed.cloudflare.com/__up", { method:"POST", body:new Uint8Array(bytes), cache:"no-store", signal });
+  const r = await timedFetch(`${SPEED_HOST}/__up`, { method:"POST", body:new Uint8Array(bytes) }, ms);
+  if (!r.ok) throw new Error("up HTTP " + r.status);
   return { bytes, ms: performance.now() - t0 };
 }
 async function runSpeedTest(prog){
-  const ac = new AbortController();
-  const kill = setTimeout(() => ac.abort(), 30000);
-  try {
-    const pings = [];
-    for (let i=0;i<5;i++){ const d = await cfDown(1, ac.signal); pings.push(d.ms); }
-    pings.sort((a,b) => a-b);
-    const ping = Math.round(pings[2]);
-    prog && prog("↓");
-    let dB=0, dMs=0;
-    for (const sz of [1e6, 5e6, 10e6, 25e6]){ const d = await cfDown(sz, ac.signal); dB+=d.bytes; dMs+=d.ms; if (dMs>10000) break; }
-    const dl = +((dB*8/1e6) / (dMs/1000)).toFixed(1);
-    prog && prog("↑");
-    let uB=0, uMs=0;
-    for (const sz of [1e6, 5e6, 10e6]){ const u = await cfUp(sz, ac.signal); uB+=u.bytes; uMs+=u.ms; if (uMs>10000) break; }
-    const ul = +((uB*8/1e6) / (uMs/1000)).toFixed(1);
-    return { dl, ul, ping };
-  } finally { clearTimeout(kill); }
+  // ping — median of 5 tiny GETs
+  const pings = [];
+  for (let i=0;i<5;i++){ try { const d = await cfDown(1, 8000); pings.push(d.ms); } catch(_){} }
+  if (!pings.length) throw new Error("no reply from speed server");
+  pings.sort((a,b) => a-b);
+  const ping = Math.round(pings[Math.floor(pings.length/2)]);
+
+  // download — grow chunk size, stop after ~8s of transfer or on first big chunk
+  prog && prog("↓");
+  let dB=0, dMs=0;
+  for (const sz of [2e5, 1e6, 3e6, 6e6, 10e6]){
+    const d = await cfDown(sz, 20000);
+    dB += d.bytes; dMs += d.ms;
+    if (dMs > 8000) break;
+  }
+  const dl = +((dB*8/1e6) / (dMs/1000)).toFixed(1);
+
+  // upload — same idea, smaller
+  prog && prog("↑");
+  let uB=0, uMs=0;
+  for (const sz of [2e5, 1e6, 3e6, 6e6]){
+    const u = await cfUp(sz, 20000);
+    uB += u.bytes; uMs += u.ms;
+    if (uMs > 8000) break;
+  }
+  const ul = +((uB*8/1e6) / (uMs/1000)).toFixed(1);
+  return { dl, ul, ping };
 }
 async function onSpeedTest(btn){
   const [id, ri] = btn.dataset.sp.split(":");
@@ -606,7 +628,7 @@ async function onSpeedTest(btn){
     ulIn.dispatchEvent(new Event("input", { bubbles:true }));
     showTip(`${activeCarrier.toUpperCase()} · DL ${dl} / UL ${ul} Mbps · ping ${ping} ms`);
   } catch (err) {
-    showTip("Speed test failed — hosted version only, or no signal.");
+    showTip("Speed test failed: " + (err && err.message ? err.message : "unknown") + ". Retry, or check signal / content blocker.");
   } finally {
     btn.disabled = false; btn.textContent = orig;
   }
