@@ -171,7 +171,7 @@
     <div id="photos"></div>
   </section>
 
-  <div class="stamp">build v2026-09-07-n</div>
+  <div class="stamp">build v2026-09-07-o</div>
 </main>
 
 <iframe id="printFrame" style="position:fixed;width:0;height:0;border:0;left:-9999px"></iframe>
@@ -565,18 +565,20 @@ async function onSignalRead(btn){
   const orig = btn.textContent;
   btn.disabled = true; btn.textContent = "…";
   try {
-    const r = await CellSignal.read();          // { tech, rsrp, rsrq, sinr?, band? }
+    const r = await CellSignal.read({ carrier: activeCarrier });   // { tech, rsrp, rsrq, sinr?, band? }
     const set = (col, val) => {
       if (val === undefined || val === null || val === "") return;
       const el = q(col); if (!el) return;
       el.value = val; el.dispatchEvent(new Event("input", { bubbles:true }));
     };
     set("rsrp", r.rsrp); set("rsrq", r.rsrq); set("sinr", r.sinr); set("band", r.band);
-    showTip(`${activeCarrier.toUpperCase()} ${r.tech||""} · RSRP ${r.rsrp} RSRQ ${r.rsrq}` +
-      (r.sinr!=null ? ` SINR ${r.sinr}` : "") + (r.band ? ` ${r.band}` : ""));
+    let msg = `${activeCarrier.toUpperCase()} ${r.tech||""} · RSRP ${r.rsrp} RSRQ ${r.rsrq}` +
+      (r.sinr != null ? ` SINR ${r.sinr}` : "");
+    msg += r.band ? ` ${r.band}` : " · Band: set Location ON to auto-read";
+    showTip(msg);
   } catch (err) {
     const m = (err && (err.message || err.errorMessage)) || "unknown";
-    showTip("Signal read failed: " + m + ". Turn Location ON and allow Phone + Location.");
+    showTip("Signal read failed: " + m);
   } finally {
     btn.disabled = false; btn.textContent = orig;
   }

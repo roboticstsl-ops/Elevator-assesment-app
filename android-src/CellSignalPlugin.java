@@ -1,6 +1,7 @@
 package com.tsl.rfsurvey;
 
 import android.Manifest;
+import android.annotation.SuppressLint;
 import android.content.Context;
 import android.os.Build;
 import android.telephony.CellIdentityLte;
@@ -8,8 +9,12 @@ import android.telephony.CellIdentityNr;
 import android.telephony.CellInfo;
 import android.telephony.CellInfoLte;
 import android.telephony.CellInfoNr;
+import android.telephony.CellSignalStrength;
 import android.telephony.CellSignalStrengthLte;
 import android.telephony.CellSignalStrengthNr;
+import android.telephony.SignalStrength;
+import android.telephony.SubscriptionInfo;
+import android.telephony.SubscriptionManager;
 import android.telephony.TelephonyManager;
 
 import com.getcapacitor.JSObject;
@@ -24,9 +29,12 @@ import com.getcapacitor.annotation.PermissionCallback;
 import java.util.List;
 
 /**
- * Reads serving-cell RSRP / RSRQ / SINR / band from the modem.
- * Android only. Needs READ_PHONE_STATE + fine location, and Location services ON
- * (getAllCellInfo returns nothing otherwise on Android 10+).
+ * Reads serving-cell RSRP / RSRQ / SINR / band from the modem. Android only.
+ *
+ * Primary path: TelephonyManager.getSignalStrength() (API 28/29+) — reliable,
+ * needs only READ_PHONE_STATE, no location toggle.
+ * getAllCellInfo() is used only as a best-effort source of the BAND, and never
+ * fails the call when it is empty (it commonly is — depends on device state).
  */
 @CapacitorPlugin(
     name = "CellSignal",
@@ -41,8 +49,9 @@ public class CellSignalPlugin extends Plugin {
 
     @PluginMethod
     public void read(PluginCall call) {
-        if (getPermissionState("phone") != PermissionState.GRANTED
-                || getPermissionState("location") != PermissionState.GRANTED) {
+        boolean phone = getPermissionState("phone") == PermissionState.GRANTED;
+        boolean loc = getPermissionState("location") == PermissionState.GRANTED;
+        if (!phone || !loc) {
             requestAllPermissions(call, "afterPerms");
             return;
         }
@@ -51,72 +60,151 @@ public class CellSignalPlugin extends Plugin {
 
     @PermissionCallback
     private void afterPerms(PluginCall call) {
-        if (getPermissionState("phone") == PermissionState.GRANTED
-                && getPermissionState("location") == PermissionState.GRANTED) {
-            doRead(call);
+        if (getPermissionState("phone") == PermissionState.GRANTED) {
+            doRead(call);                     // location is optional (band only)
         } else {
-            call.reject("Phone or Location permission denied");
+            call.reject("Phone permission denied — enable it in App info › Permissions");
         }
     }
 
+    @SuppressLint("MissingPermission")
     private void doRead(PluginCall call) {
         try {
-            TelephonyManager tm =
+            TelephonyManager base =
                 (TelephonyManager) getContext().getSystemService(Context.TELEPHONY_SERVICE);
-            if (tm == null) { call.reject("No telephony service"); return; }
+            if (base == null) { call.reject("No telephony service on this device"); return; }
 
-            List<CellInfo> cells;
-            try {
-                cells = tm.getAllCellInfo();
-            } catch (SecurityException se) {
-                call.reject("Missing permission for cell info"); return;
+            TelephonyManager tm = forCarrier(base, call.getString("carrier"));
+            JSObject r = new JSObject();
+
+            boolean gotSignal = fromSignalStrength(tm, r);
+            if (!gotSignal) gotSignal = fromCellInfo(tm, r);   // fallback for signal
+            try { addBand(tm, r); } catch (Throwable ignore) {} // best-effort, never throws out
+
+            if (!r.has("rsrp") && !r.has("rsrq")) {
+                call.reject("No signal data — check the SIM is active, then retry");
+                return;
             }
-            if (cells == null || cells.isEmpty()) {
-                call.reject("No cell info — turn Location ON and retry"); return;
-            }
-
-            for (CellInfo ci : cells) {
-                if (!ci.isRegistered()) continue;
-
-                if (ci instanceof CellInfoLte) {
-                    CellInfoLte lte = (CellInfoLte) ci;
-                    CellSignalStrengthLte ss = lte.getCellSignalStrength();
-                    JSObject r = new JSObject();
-                    r.put("tech", "LTE");
-                    putIf(r, "rsrp", ss.getRsrp());
-                    putIf(r, "rsrq", ss.getRsrq());
-                    int snr = (Build.VERSION.SDK_INT >= 26) ? ss.getRssnr() : UNAVAIL;
-                    if (snr != UNAVAIL) {
-                        if (Math.abs(snr) > 40) snr = Math.round(snr / 10f); // some OEMs report 0.1 dB
-                        r.put("sinr", snr);
-                    }
-                    r.put("band", lteBand(lte.getCellIdentity()));
-                    call.resolve(r);
-                    return;
-                }
-
-                if (Build.VERSION.SDK_INT >= 29 && ci instanceof CellInfoNr) {
-                    CellInfoNr nr = (CellInfoNr) ci;
-                    CellSignalStrengthNr ss = (CellSignalStrengthNr) nr.getCellSignalStrength();
-                    JSObject r = new JSObject();
-                    r.put("tech", "5G");
-                    putIf(r, "rsrp", ss.getSsRsrp());
-                    putIf(r, "rsrq", ss.getSsRsrq());
-                    int snr = ss.getSsSinr();
-                    if (snr != UNAVAIL) r.put("sinr", snr);
-                    r.put("band", nrBand(nr.getCellIdentity()));
-                    call.resolve(r);
-                    return;
-                }
-            }
-            call.reject("No registered LTE/5G cell");
+            call.resolve(r);
         } catch (Exception e) {
             call.reject("read failed: " + e.getMessage());
         }
     }
 
+    /* ---- primary: SignalStrength (no location needed) ---- */
+    @SuppressLint("MissingPermission")
+    private boolean fromSignalStrength(TelephonyManager tm, JSObject r) {
+        if (Build.VERSION.SDK_INT < 29) return false;
+        SignalStrength ss = tm.getSignalStrength();
+        if (ss == null) return false;
+        for (CellSignalStrength c : ss.getCellSignalStrengths()) {
+            if (c instanceof CellSignalStrengthLte) {
+                CellSignalStrengthLte l = (CellSignalStrengthLte) c;
+                putIf(r, "rsrp", l.getRsrp());
+                putIf(r, "rsrq", l.getRsrq());
+                int snr = l.getRssnr();
+                if (snr != UNAVAIL) {
+                    if (Math.abs(snr) > 40) snr = Math.round(snr / 10f);
+                    r.put("sinr", snr);
+                }
+                r.put("tech", "LTE");
+                return r.has("rsrp");
+            }
+            if (c instanceof CellSignalStrengthNr) {
+                CellSignalStrengthNr n = (CellSignalStrengthNr) c;
+                putIf(r, "rsrp", n.getSsRsrp());
+                putIf(r, "rsrq", n.getSsRsrq());
+                int snr = n.getSsSinr();
+                if (snr != UNAVAIL) r.put("sinr", snr);
+                r.put("tech", "5G");
+                return r.has("rsrp");
+            }
+        }
+        return false;
+    }
+
+    /* ---- fallback: getAllCellInfo signal ---- */
+    @SuppressLint("MissingPermission")
+    private boolean fromCellInfo(TelephonyManager tm, JSObject r) {
+        List<CellInfo> cells;
+        try { cells = tm.getAllCellInfo(); } catch (SecurityException se) { return false; }
+        if (cells == null) return false;
+        for (CellInfo ci : cells) {
+            if (!ci.isRegistered()) continue;
+            if (ci instanceof CellInfoLte) {
+                CellSignalStrengthLte s = ((CellInfoLte) ci).getCellSignalStrength();
+                putIf(r, "rsrp", s.getRsrp());
+                putIf(r, "rsrq", s.getRsrq());
+                if (Build.VERSION.SDK_INT >= 26) {
+                    int snr = s.getRssnr();
+                    if (snr != UNAVAIL) {
+                        if (Math.abs(snr) > 40) snr = Math.round(snr / 10f);
+                        r.put("sinr", snr);
+                    }
+                }
+                r.put("tech", "LTE");
+                return r.has("rsrp");
+            }
+            if (Build.VERSION.SDK_INT >= 29 && ci instanceof CellInfoNr) {
+                CellSignalStrengthNr s = (CellSignalStrengthNr) ((CellInfoNr) ci).getCellSignalStrength();
+                putIf(r, "rsrp", s.getSsRsrp());
+                putIf(r, "rsrq", s.getSsRsrq());
+                int snr = s.getSsSinr();
+                if (snr != UNAVAIL) r.put("sinr", snr);
+                r.put("tech", "5G");
+                return r.has("rsrp");
+            }
+        }
+        return false;
+    }
+
+    /* ---- best-effort band from cell identity (needs location on Android 10+) ---- */
+    @SuppressLint("MissingPermission")
+    private void addBand(TelephonyManager tm, JSObject r) {
+        List<CellInfo> cells = tm.getAllCellInfo();
+        if (cells == null) return;
+        for (CellInfo ci : cells) {
+            if (!ci.isRegistered()) continue;
+            if (ci instanceof CellInfoLte) {
+                String b = lteBand(((CellInfoLte) ci).getCellIdentity());
+                if (!b.isEmpty()) r.put("band", b);
+                return;
+            }
+            if (Build.VERSION.SDK_INT >= 30 && ci instanceof CellInfoNr) {
+                Object id = ((CellInfoNr) ci).getCellIdentity();
+                if (id instanceof CellIdentityNr) {
+                    int[] bands = ((CellIdentityNr) id).getBands();
+                    if (bands != null && bands.length > 0) r.put("band", "n" + bands[0]);
+                }
+                return;
+            }
+        }
+    }
+
+    /* ---- dual-SIM: pick the subscription whose carrier matches ---- */
+    @SuppressLint("MissingPermission")
+    private TelephonyManager forCarrier(TelephonyManager base, String carrier) {
+        if (carrier == null || Build.VERSION.SDK_INT < 24) return base;
+        try {
+            SubscriptionManager sm =
+                (SubscriptionManager) getContext().getSystemService(Context.TELEPHONY_SUBSCRIPTION_SERVICE);
+            List<SubscriptionInfo> subs = sm.getActiveSubscriptionInfoList();
+            if (subs == null) return base;
+            boolean wantDu = carrier.equalsIgnoreCase("du");
+            for (SubscriptionInfo si : subs) {
+                String name = String.valueOf(si.getCarrierName()).toLowerCase();
+                boolean isDu = name.contains("du");
+                boolean isEt = name.contains("e&") || name.contains("etisalat") || name.contains("eand");
+                if ((wantDu && isDu) || (!wantDu && isEt)) {
+                    return base.createForSubscriptionId(si.getSubscriptionId());
+                }
+            }
+        } catch (Throwable ignore) {}
+        return base;
+    }
+
     private void putIf(JSObject o, String k, int v) {
-        if (v != UNAVAIL && v != 0x7FFFFFFF) o.put(k, v);
+        if (v != UNAVAIL && v != 0) o.put(k, v);
     }
 
     private String lteBand(CellIdentityLte id) {
@@ -128,15 +216,6 @@ public class CellSignalPlugin extends Plugin {
         return lteBandFromEarfcn(id.getEarfcn());
     }
 
-    private String nrBand(Object identity) {
-        if (Build.VERSION.SDK_INT >= 30 && identity instanceof CellIdentityNr) {
-            int[] b = ((CellIdentityNr) identity).getBands();
-            if (b != null && b.length > 0) return "n" + b[0];
-        }
-        return "";
-    }
-
-    /** Rough EARFCN → LTE band, for devices below API 30. */
     private String lteBandFromEarfcn(int e) {
         if (e <= 0 || e == UNAVAIL) return "";
         if (e <= 599) return "B1";
