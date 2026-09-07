@@ -1,0 +1,811 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1">
+<title>Site Visit Sheet — Elevator Assessment &amp; RF/LTE Scan</title>
+<style>
+  :root { --bd:#c9ccd2; --hd:#2f3640; --accent:#1652c9; --bg:#f4f5f7; }
+  * { box-sizing:border-box; }
+  body { margin:0; font:15px/1.4 -apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,sans-serif; background:var(--bg); color:#1c1f24; }
+  header.app { background:var(--hd); color:#fff; padding:14px 16px; position:sticky; top:0; z-index:20; }
+  header.app h1 { margin:0; font-size:16px; font-weight:600; }
+  header.app .bar { margin-top:8px; display:flex; gap:8px; flex-wrap:wrap; }
+  main { max-width:960px; margin:0 auto; padding:16px; }
+  section.card { background:#fff; border:1px solid var(--bd); border-radius:8px; padding:14px; margin-bottom:16px; }
+  section.card > h2 { margin:0 0 10px; font-size:15px; color:var(--accent); border-bottom:1px solid var(--bd); padding-bottom:6px; }
+  h3 { font-size:14px; margin:14px 0 6px; }
+  label { display:block; font-size:12px; font-weight:600; color:#4a4f57; margin:8px 0 3px; }
+  input[type=text], input[type=date], input[type=url], textarea, select {
+    width:100%; padding:9px 10px; border:1px solid var(--bd); border-radius:6px; font:inherit; background:#fff; }
+  textarea { min-height:60px; resize:vertical; }
+  .grid2 { display:grid; grid-template-columns:1fr 1fr; gap:10px; }
+  @media (max-width:620px){ .grid2 { grid-template-columns:1fr; } }
+  .chk-row { display:grid; grid-template-columns:1fr 92px; gap:8px; align-items:center; padding:5px 0; border-bottom:1px dashed #e3e5e8; }
+  .chk-row span { font-size:13px; }
+  button { font:inherit; padding:9px 14px; border-radius:6px; border:1px solid var(--hd); background:var(--hd); color:#fff; cursor:pointer; }
+  button.ghost { background:#fff; color:var(--hd); }
+  button.sm { padding:6px 10px; font-size:13px; }
+  .rf-wrap { overflow-x:auto; border:1px solid var(--bd); border-radius:6px; }
+  table.rf { border-collapse:collapse; min-width:900px; font-size:12px; }
+  table.rf th, table.rf td { border:1px solid var(--bd); padding:2px; text-align:center; }
+  table.rf th { background:#eef1f5; position:sticky; }
+  table.rf td input { width:64px; padding:5px 4px; border:1px solid #dfe2e6; border-radius:4px; text-align:center; }
+  table.rf td.loc { text-align:left; white-space:nowrap; font-weight:600; padding:4px 8px; background:#fafbfc; }
+  table.rf td.loc input { width:150px; text-align:left; }
+  .rail { border:1px solid var(--bd); border-radius:6px; padding:10px; margin-bottom:12px; }
+  .rail h3 { margin-top:0; }
+  .rail svg { display:block; max-width:340px; width:100%; height:auto; margin:4px 0 8px; }
+  .draw-tools { display:flex; flex-wrap:wrap; gap:6px; margin:6px 0; align-items:center; }
+  .draw-tools button { padding:6px 10px; font-size:13px; background:#fff; color:var(--hd); border:1px solid var(--bd); }
+  .draw-tools button.on { background:var(--hd); color:#fff; }
+  .draw-tools .lbl-in { width:110px; padding:6px 8px; border:1px solid var(--bd); border-radius:6px; font-size:13px; }
+  .draw-canvas { border:1px solid var(--bd); border-radius:6px; background:#fff; touch-action:none; }
+  .carrier-pick { display:flex; gap:6px; }
+  .carrier-pick button { padding:7px 18px; font-size:13px; background:#fff; color:var(--hd); border:1px solid var(--bd); border-radius:6px; }
+  .carrier-pick button.on { background:var(--accent); color:#fff; border-color:var(--accent); }
+  .sptest { padding:2px 6px; font-size:12px; line-height:1.4; border:1px solid var(--bd); background:#fff; border-radius:4px; margin-left:6px; vertical-align:middle; }
+  .sptest:disabled { opacity:.5; }
+  .draw-canvas.arming { border-color:var(--accent); box-shadow:0 0 0 2px rgba(22,82,201,.25); }
+  .draw-tools .arm { font-size:12px; color:var(--accent); font-weight:700; }
+  .draw-tools .arm:empty { display:none; }
+  .rail .dims { display:grid; grid-template-columns:repeat(auto-fill,minmax(90px,1fr)); gap:8px; }
+  .rail .dims label { margin:0; }
+  .rail .dims input { padding:6px 8px; }
+  .photo-item { border:1px solid var(--bd); border-radius:6px; padding:10px; margin-bottom:10px; }
+  .photo-item img { max-height:150px; border-radius:4px; margin-top:6px; display:block; }
+  .banner { display:none; background:#c0392b; color:#fff; padding:10px 14px; border-radius:6px; margin-bottom:12px; font-size:13px; }
+  .hint { font-size:12px; color:#6b7079; margin:4px 0; }
+  .stamp { font-size:11px; color:#9aa0a8; text-align:center; margin-top:20px; }
+</style>
+</head>
+<body>
+<header class="app">
+  <h1>Site Visit Sheet — Elevator Assessment &amp; RF/LTE Scan</h1>
+  <div class="bar">
+    <button class="sm" onclick="doPrint()">🖨️ Generate PDF</button>
+    <button class="sm ghost" onclick="startFresh()">Start Fresh</button>
+    <button class="sm ghost" onclick="refreshKeep()">🔄 Refresh</button>
+  </div>
+</header>
+<main>
+  <div id="banner" class="banner"></div>
+
+  <section class="card">
+    <h2>Header</h2>
+    <div class="grid2">
+      <div><label>Document Ref</label><input type="text" data-f="doc_ref"></div>
+      <div><label>Prepared By</label><input type="text" data-f="prepared_by"></div>
+      <div><label>Date</label><input type="date" data-f="date"></div>
+      <div><label>Version</label><input type="text" data-f="version"></div>
+      <div><label>Project / Activity</label><input type="text" data-f="project" value="Site Inspection"></div>
+      <div><label>Site Name</label><input type="text" data-f="site_name"></div>
+      <div><label>Client</label><input type="text" data-f="client"></div>
+      <div><label>Full Address</label><input type="text" data-f="address"></div>
+    </div>
+    <label>Google Maps Pin / Link</label><input type="url" data-f="maps_link" placeholder="https://maps.app.goo.gl/...">
+  </section>
+
+  <section class="card">
+    <h2>1.1 Elevator Assessment</h2>
+    <div id="checklist"></div>
+    <label>Note (wall distances / RF mounting)</label>
+    <textarea data-f="checklist_note"></textarea>
+  </section>
+
+  <section class="card">
+    <h2>2. Technical Findings — Elevator</h2>
+    <div class="grid2">
+      <div><label>Elevator OEM</label><input type="text" data-f="elev_oem"></div>
+      <div><label>Elevator Model / Series</label><input type="text" data-f="elev_model"></div>
+      <div><label>Elevator ID (bank if applicable)</label><input type="text" data-f="elev_id"></div>
+      <div><label>Elevator Maintenance Company</label><input type="text" data-f="elev_maint"></div>
+    </div>
+    <label>Available Plug Point(s) on top of the elevator</label>
+    <textarea data-f="plug_points"></textarea>
+
+    <h3>Railing Measurements</h3>
+    <div id="rails"></div>
+    <label>Notes (IoT box placement)</label>
+    <textarea data-f="rail_note"></textarea>
+  </section>
+
+  <section class="card">
+    <h2>3. Technical Findings — LTE / RF Survey</h2>
+    <div class="grid2">
+      <div><label>Network(s) Tested</label><input type="text" data-f="networks" value="du, e&"></div>
+      <div><label>App / Survey Point</label><input type="text" data-f="survey_point"></div>
+      <div><label>Overall Feasibility</label><input type="text" data-f="feasibility"></div>
+    </div>
+
+    <label>Speed-test carrier</label>
+    <div class="carrier-pick">
+      <button type="button" data-carrier="du" class="on">DU</button>
+      <button type="button" data-carrier="et">e&amp;</button>
+    </div>
+    <p class="hint">Pick the SIM you're testing, then tap ⚡ on any row to auto-fill its DL / UL (and ping) for that carrier. RSRP / RSRQ / SINR / Band stay manual — no browser can read them. The speed test needs the hosted version; it won't run on the Claude preview link.</p>
+
+    <h3>3.1 RF Measurements (Charging Area + Building Lobby)</h3>
+    <div id="rf1" class="rf-wrap"></div>
+
+    <h3>Floors</h3>
+    <div style="display:flex;gap:8px;align-items:flex-end;flex-wrap:wrap">
+      <div><label>Number of floors (excl. Ground)</label>
+        <input type="text" id="floorCount" inputmode="numeric" value="25" style="width:120px"></div>
+      <button class="sm" onclick="buildFloorTables()">Generate floor rows</button>
+    </div>
+    <p class="hint">Regenerating keeps values already entered (matched by row order).</p>
+
+    <h3>3.2 RF Measurements (On top of elevator cabin)</h3>
+    <div id="rf2" class="rf-wrap"></div>
+
+    <h3>3.3 RF Measurements (Inside elevator cabin)</h3>
+    <div id="rf3" class="rf-wrap"></div>
+  </section>
+
+  <section class="card">
+    <h2>4.0 Elevator Integration Checks</h2>
+    <div class="grid2">
+      <div><label>Button module SKU</label><input type="text" data-f="btn_sku"></div>
+      <div><label>Connectors used on the button module</label><input type="text" data-f="btn_connectors"></div>
+    </div>
+    <h3>Number of connections and pinout</h3>
+    <div class="rf-wrap">
+      <table class="rf" id="pinout" style="min-width:auto"><thead>
+        <tr><th style="width:50px">PIN</th><th>USE</th><th style="width:120px">Color</th></tr>
+      </thead><tbody></tbody></table>
+    </div>
+  </section>
+
+  <section class="card">
+    <h2>5. Photos &amp; Attachments</h2>
+    <div id="photos"></div>
+    <button class="sm ghost" onclick="addPhoto()">+ Add photo / attachment</button>
+  </section>
+
+  <div class="stamp">build v2026-09-07-k</div>
+</main>
+
+<iframe id="printFrame" style="position:fixed;width:0;height:0;border:0;left:-9999px"></iframe>
+
+<script>
+const LS_KEY = "svs_draft_v2";
+const METRICS = ["rsrp","rsrq","sinr","band","dl","ul"];
+const METRIC_LBL = { rsrp:"RSRP (dBm)", rsrq:"RSRQ (dB)", sinr:"SINR (dB)", band:"Band", dl:"DL (Mbps)", ul:"UL (Mbps)" };
+const CHECKLIST = [
+  "Elevator Bank(s) identified and access confirmed from main lobby",
+  "Machine room / controller location identified for networking",
+  "Controller type noted (OEM / model / interface)",
+  "Power availability confirmed (socket type / distance) on top of the elevator cab",
+  "Mounting options checked (cabinet / riser / ceiling) for elevator controller",
+  "Cable routes assessed (shaft, trunking, risers)",
+  "Restrictions/constraints recorded (timings, escort, approvals)",
+  "External signal measurement",
+  "Lobby / reception measurement",
+  "Elevator car measurement (static) on each floor",
+  "Shaft measurement (if permitted) on each floor",
+  "Roof / riser measurement (if applicable)",
+  "Speed test / throughput recorded",
+];
+const RF1_LOCS = ["Main lobby / reception", "Lift lobby GF", "d-bot charging point"];
+const RAILS = [
+  { key:"top",   name:"Top railing",   letters:["A","B","C","D","E","F","G"] },
+  { key:"rear",  name:"Rear railing",  letters:["A","B","C","D","E"] },
+  { key:"left",  name:"Left railing",  letters:["A","B","C","D","E"] },
+  { key:"right", name:"Right railing", letters:["A","B","C","D","E"] },
+];
+const PIN_COLORS = ["Black","Brown","Red","Orange"];
+
+/* ---------- helpers ---------- */
+const $ = s => document.querySelector(s);
+const esc = s => String(s==null?"":s).replace(/[&<>"]/g, c => ({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;"}[c]));
+function ord(n){ const s=["th","st","nd","rd"], v=n%100; return n + (s[(v-20)%10] || s[v] || s[0]); }
+function floorLabel(i){ return i===0 ? "Ground" : ord(i) + " Floor"; }
+
+/* ---------- railing drawing board ---------- */
+const SHAPE_TOOLS = [["move","✋ Move"],["rect","▭ Box"],["line","╱ Line"],["arrow","➤ Arrow"],["pen","✏️ Pen"],["text","T Label"]];
+function drawToolbar(){
+  return `<div class="draw-tools">` +
+    SHAPE_TOOLS.map(([t,l]) => `<button type="button" data-tool="${t}"${t==="move"?' class="on"':''}>${l}</button>`).join("") +
+    `<input type="text" class="lbl-in" data-label placeholder="label text" value="A">` +
+    `<span class="arm" data-arm></span>` +
+    `<button type="button" data-act="undo">↩︎ Undo</button>` +
+    `<button type="button" data-act="del">🗑 Delete</button>` +
+    `<button type="button" data-act="clear">Clear</button></div>`;
+}
+function shapeBox(s){
+  if (s.t==="rect") return { x:Math.min(s.x,s.x+s.w), y:Math.min(s.y,s.y+s.h), w:Math.abs(s.w), h:Math.abs(s.h) };
+  if (s.t==="line" || s.t==="arrow" || s.t==="dim") return { x:Math.min(s.x1,s.x2), y:Math.min(s.y1,s.y2), w:Math.abs(s.x2-s.x1), h:Math.abs(s.y2-s.y1) };
+  if (s.t==="path"){ const xs=s.d.map(p=>p[0]), ys=s.d.map(p=>p[1]);
+    const x=Math.min(...xs), y=Math.min(...ys); return { x, y, w:Math.max(...xs)-x, h:Math.max(...ys)-y }; }
+  return { x:s.x, y:s.y-13, w:Math.max(14,(s.txt||"").length*8), h:17 };
+}
+function shapeHandles(s){
+  if (s.t==="rect"){
+    const b = shapeBox(s);
+    return [
+      {k:"nw",x:b.x,y:b.y},{k:"n",x:b.x+b.w/2,y:b.y},{k:"ne",x:b.x+b.w,y:b.y},
+      {k:"e",x:b.x+b.w,y:b.y+b.h/2},{k:"se",x:b.x+b.w,y:b.y+b.h},
+      {k:"s",x:b.x+b.w/2,y:b.y+b.h},{k:"sw",x:b.x,y:b.y+b.h},{k:"w",x:b.x,y:b.y+b.h/2},
+    ];
+  }
+  if (s.t==="line" || s.t==="arrow" || s.t==="dim") return [{k:"p1",x:s.x1,y:s.y1},{k:"p2",x:s.x2,y:s.y2}];
+  return [];
+}
+function hitShape(shapes, p){
+  for (let i=shapes.length-1;i>=0;i--){
+    const b = shapeBox(shapes[i]);
+    if (p.x>=b.x-6 && p.x<=b.x+b.w+6 && p.y>=b.y-6 && p.y<=b.y+b.h+6) return i;
+  }
+  return -1;
+}
+function snapPoint(shapes, p, skip){
+  const SNAP = 11, cand = [];
+  shapes.forEach((s,i) => {
+    if (i===skip) return;
+    if (s.t==="rect"){
+      const b = shapeBox(s);
+      cand.push([b.x,b.y],[b.x+b.w,b.y],[b.x,b.y+b.h],[b.x+b.w,b.y+b.h],
+        [b.x+b.w/2,b.y],[b.x+b.w/2,b.y+b.h],[b.x,b.y+b.h/2],[b.x+b.w,b.y+b.h/2]);
+    } else if (s.t==="line" || s.t==="arrow" || s.t==="dim"){
+      cand.push([s.x1,s.y1],[s.x2,s.y2],[(s.x1+s.x2)/2,(s.y1+s.y2)/2]);
+    }
+  });
+  let best = p, bd = SNAP;
+  cand.forEach(([x,y]) => { const d = Math.hypot(p.x-x, p.y-y); if (d < bd){ bd = d; best = { x, y }; } });
+  return best;
+}
+function arrowHead(x1,y1,x2,y2){
+  const a = Math.atan2(y2-y1, x2-x1), L = 13;
+  const p1x = x2 - L*Math.cos(a-0.5), p1y = y2 - L*Math.sin(a-0.5);
+  const p2x = x2 - L*Math.cos(a+0.5), p2y = y2 - L*Math.sin(a+0.5);
+  return `<polyline points="${p1x},${p1y} ${x2},${y2} ${p2x},${p2y}" fill="none" stroke="#111" stroke-width="2"/>`;
+}
+function shapesToSvg(shapes, sel){
+  return (shapes||[]).map((s,i) => {
+    let m;
+    if (s.t==="rect"){ const b0 = shapeBox(s); m = `<rect x="${b0.x}" y="${b0.y}" width="${b0.w}" height="${b0.h}" fill="none" stroke="#111" stroke-width="2"/>`; }
+    else if (s.t==="line") m = `<line x1="${s.x1}" y1="${s.y1}" x2="${s.x2}" y2="${s.y2}" stroke="#111" stroke-width="2"/>`;
+    else if (s.t==="arrow") m = `<line x1="${s.x1}" y1="${s.y1}" x2="${s.x2}" y2="${s.y2}" stroke="#111" stroke-width="2"/>` + arrowHead(s.x1,s.y1,s.x2,s.y2);
+    else if (s.t==="path") m = `<polyline points="${s.d.map(p=>p[0]+','+p[1]).join(' ')}" fill="none" stroke="#111" stroke-width="2" stroke-linejoin="round" stroke-linecap="round"/>`;
+    else if (s.t==="dim"){
+      const ang = Math.atan2(s.y2-s.y1, s.x2-s.x1), tx = 6*Math.sin(ang), ty = -6*Math.cos(ang);
+      const mx = (s.x1+s.x2)/2, my = (s.y1+s.y2)/2;
+      m = `<line x1="${s.x1}" y1="${s.y1}" x2="${s.x2}" y2="${s.y2}" stroke="#1652c9" stroke-width="1.5"/>`
+        + `<line x1="${s.x1-tx}" y1="${s.y1-ty}" x2="${s.x1+tx}" y2="${s.y1+ty}" stroke="#1652c9" stroke-width="1.5"/>`
+        + `<line x1="${s.x2-tx}" y1="${s.y2-ty}" x2="${s.x2+tx}" y2="${s.y2+ty}" stroke="#1652c9" stroke-width="1.5"/>`
+        + `<text x="${mx+tx*1.8}" y="${my+ty*1.8}" font-size="13" fill="#1652c9" font-family="Arial, sans-serif" text-anchor="middle" dominant-baseline="middle">${esc(s.label)}</text>`;
+    }
+    else m = `<text x="${s.x}" y="${s.y}" font-size="15" fill="#1652c9" font-family="Arial, sans-serif">${esc(s.txt)}</text>`;
+    if (i === sel){
+      const b = shapeBox(s);
+      m += `<rect x="${b.x-4}" y="${b.y-4}" width="${b.w+8}" height="${b.h+8}" fill="none" stroke="#1652c9" stroke-width="1" stroke-dasharray="4 3"/>`;
+    }
+    return m;
+  }).join("");
+}
+function canvasPoint(svg, e){
+  const r = svg.getBoundingClientRect(), vb = svg.viewBox.baseVal;
+  return { x:(e.clientX-r.left)/r.width*vb.width, y:(e.clientY-r.top)/r.height*vb.height };
+}
+function renderCanvas(svg){
+  let m = shapesToSvg(svg._shapes, svg._sel);
+  if (svg._snapMark) m += `<circle cx="${svg._snapMark.x}" cy="${svg._snapMark.y}" r="6" fill="none" stroke="#1652c9" stroke-width="1.5"/>`;
+  svg.innerHTML = m;
+}
+function initCanvas(railEl){
+  const svg = railEl.querySelector("[data-canvas]");
+  const labelIn = railEl.querySelector("[data-label]");
+  svg._shapes = []; svg._tool = "move"; svg._sel = -1; svg._hist = [];
+  let drag = null;
+  const armSpan = railEl.querySelector("[data-arm]");
+  const snap = () => { svg._hist.push(JSON.stringify(svg._shapes)); if (svg._hist.length > 50) svg._hist.shift(); };
+  const setTool = t => { svg._tool = t; railEl.querySelectorAll("[data-tool]").forEach(b => b.classList.toggle("on", b.dataset.tool===t)); };
+  const clearArm = () => { svg._activeDim = null; svg.classList.remove("arming"); armSpan.textContent = ""; };
+  railEl.querySelectorAll("[data-dim]").forEach(inp => {
+    inp.addEventListener("focus", () => { svg._activeDim = inp.dataset.dim; svg.classList.add("arming"); armSpan.textContent = "draw " + inp.dataset.dim + " on the board"; });
+    inp.addEventListener("input", () => { if (svg._activeDim === inp.dataset.dim) clearArm(); });
+  });
+  railEl.querySelector(".draw-tools").addEventListener("click", e => {
+    clearArm();
+    const tb = e.target.closest("[data-tool]");
+    if (tb){ setTool(tb.dataset.tool); return; }
+    const ab = e.target.closest("[data-act]");
+    if (!ab) return;
+    if (ab.dataset.act === "undo"){
+      if (svg._hist.length){ svg._shapes = JSON.parse(svg._hist.pop()); svg._sel = -1; renderCanvas(svg); save(); }
+    } else if (ab.dataset.act === "del"){
+      if (svg._sel < 0) svg._sel = svg._shapes.length - 1;   // nothing picked → drop the last shape
+      if (svg._sel >= 0){ snap(); svg._shapes.splice(svg._sel,1); svg._sel = -1; renderCanvas(svg); save(); }
+    } else if (ab.dataset.act === "clear"){
+      if (svg._shapes.length){ snap(); svg._shapes = []; svg._sel = -1; renderCanvas(svg); save(); }
+    }
+  });
+  labelIn.addEventListener("focus", () => { const s = svg._shapes[svg._sel]; if (s && s.t==="text") snap(); });
+  labelIn.addEventListener("input", () => {
+    const s = svg._shapes[svg._sel];
+    if (s && s.t==="text"){ s.txt = labelIn.value; renderCanvas(svg); save(); }
+  });
+  svg.addEventListener("pointerdown", e => {
+    e.preventDefault();
+    const rawp = canvasPoint(svg, e);
+    const creating = svg._activeDim || (svg._tool !== "move");
+    const p = creating ? snapPoint(svg._shapes, rawp, -1) : rawp;
+    if (svg._activeDim){
+      snap();
+      const s = { t:"dim", x1:p.x, y1:p.y, x2:p.x, y2:p.y, label:svg._activeDim };
+      svg._shapes.push(s); svg._sel = svg._shapes.length-1;
+      drag = { mode:"dim", snapped:true }; svg.setPointerCapture(e.pointerId);
+      renderCanvas(svg); return;
+    }
+    if (svg._tool !== "move"){
+      snap();
+      if (svg._tool==="pen"){
+        const s = { t:"path", d:[[p.x,p.y]] };
+        svg._shapes.push(s); svg._sel = svg._shapes.length-1;
+        drag = { mode:"pen", snapped:true }; svg.setPointerCapture(e.pointerId); renderCanvas(svg); return;
+      }
+      if (svg._tool==="text"){
+        svg._shapes.push({ t:"text", x:p.x, y:p.y, txt:(labelIn.value || "Label") });
+        svg._sel = svg._shapes.length-1; setTool("move"); renderCanvas(svg); save(); return;
+      }
+      let s;
+      if (svg._tool==="rect") s = { t:"rect", x:p.x, y:p.y, w:0, h:0 };
+      else s = { t:svg._tool, x1:p.x, y1:p.y, x2:p.x, y2:p.y };   // line / arrow
+      svg._shapes.push(s); svg._sel = svg._shapes.length-1;
+      drag = { mode:"draw", snapped:true }; svg.setPointerCapture(e.pointerId);
+      renderCanvas(svg); return;
+    }
+    if (svg._sel>=0){
+      const hit = shapeHandles(svg._shapes[svg._sel]).find(h => Math.hypot(p.x-h.x, p.y-h.y) <= 16);
+      if (hit){ drag = { mode:"resize", hk:hit.k, orig:JSON.parse(JSON.stringify(svg._shapes[svg._sel])) }; svg.setPointerCapture(e.pointerId); return; }
+    }
+    const i = hitShape(svg._shapes, p);
+    svg._sel = i; renderCanvas(svg);
+    if (i>=0){
+      if (svg._shapes[i].t==="text") labelIn.value = svg._shapes[i].txt;
+      drag = { mode:"move", start:p, orig:JSON.parse(JSON.stringify(svg._shapes[i])) };
+      svg.setPointerCapture(e.pointerId);
+    }
+  });
+  svg.addEventListener("pointermove", e => {
+    if (!drag) return;
+    if (!drag.snapped){ snap(); drag.snapped = true; }
+    const raw = canvasPoint(svg, e), s = svg._shapes[svg._sel];
+    const useSnap = drag.mode==="draw" || drag.mode==="dim" || drag.mode==="resize";
+    const p = useSnap ? snapPoint(svg._shapes, raw, svg._sel) : raw;
+    svg._snapMark = (useSnap && p !== raw) ? p : null;
+    if (drag.mode==="pen"){ s.d.push([raw.x,raw.y]); renderCanvas(svg); return; }
+    if (drag.mode==="dim"){ s.x2 = p.x; s.y2 = p.y; renderCanvas(svg); return; }
+    if (drag.mode==="draw"){
+      if (s.t==="rect"){ s.w = p.x-s.x; s.h = p.y-s.y; }
+      else { s.x2 = p.x; s.y2 = p.y; }
+      renderCanvas(svg); return;
+    }
+    if (drag.mode==="move"){
+      const o = drag.orig, dx = p.x-drag.start.x, dy = p.y-drag.start.y;
+      if (s.t==="rect" || s.t==="text"){ s.x=o.x+dx; s.y=o.y+dy; }
+      else if (s.t==="line" || s.t==="arrow" || s.t==="dim"){ s.x1=o.x1+dx; s.y1=o.y1+dy; s.x2=o.x2+dx; s.y2=o.y2+dy; }
+      else if (s.t==="path"){ s.d = o.d.map(pt => [pt[0]+dx, pt[1]+dy]); }
+    } else if (drag.mode==="resize"){
+      const o = drag.orig, k = drag.hk;
+      if (s.t==="rect"){
+        let l = o.x, r = o.x + o.w, t = o.y, bt = o.y + o.h;
+        if (k.includes("w")) l = p.x;
+        if (k.includes("e")) r = p.x;
+        if (k.includes("n")) t = p.y;
+        if (k.includes("s")) bt = p.y;
+        s.x = Math.min(l,r); s.w = Math.max(10, Math.abs(r-l));
+        s.y = Math.min(t,bt); s.h = Math.max(10, Math.abs(bt-t));
+      } else if (k==="p1"){ s.x1 = p.x; s.y1 = p.y; }
+      else { s.x2 = p.x; s.y2 = p.y; }
+    }
+    renderCanvas(svg);
+  });
+  const endDrag = e => {
+    if (!drag) return;
+    const mode = drag.mode;
+    drag = null;
+    try { svg.releasePointerCapture(e.pointerId); } catch(_){}
+    if (mode==="draw"){
+      const s = svg._shapes[svg._sel];
+      if (s.t==="rect"){
+        if (s.w<0){ s.x+=s.w; s.w=-s.w; }
+        if (s.h<0){ s.y+=s.h; s.h=-s.h; }
+        if (s.w<6 && s.h<6){ s.w=80; s.h=50; }
+      } else if (Math.hypot(s.x2-s.x1, s.y2-s.y1) < 6){ s.x2 = s.x1+90; }
+      renderCanvas(svg);
+    }
+    if (mode==="dim"){
+      const s = svg._shapes[svg._sel];
+      const len = Math.round(Math.hypot(s.x2-s.x1, s.y2-s.y1));
+      if (len < 6){ svg._shapes.pop(); svg._sel = -1; }
+      else {
+        const inp = railEl.querySelector(`[data-dim="${s.label}"]`);
+        if (inp){ inp.value = len; inp.dispatchEvent(new Event("input", { bubbles:true })); }
+      }
+      clearArm(); renderCanvas(svg);
+    }
+    if (mode==="resize"){
+      const s = svg._shapes[svg._sel];
+      if (s && s.t==="dim"){
+        const inp = railEl.querySelector(`[data-dim="${s.label}"]`);
+        if (inp){ inp.value = Math.round(Math.hypot(s.x2-s.x1, s.y2-s.y1)); inp.dispatchEvent(new Event("input", { bubbles:true })); }
+      }
+    }
+    if (mode==="pen" || mode==="draw") setTool("move");
+    svg._snapMark = null; renderCanvas(svg);
+    save();
+  };
+  svg.addEventListener("pointerup", endDrag);
+  svg.addEventListener("pointercancel", endDrag);
+}
+function railPrintSvg(shapes){
+  return `<svg viewBox="0 0 340 240" xmlns="http://www.w3.org/2000/svg" width="300">${shapesToSvg(shapes, -1)}</svg>`;
+}
+
+/* ---------- build static-ish sections ---------- */
+function buildChecklist(){
+  $("#checklist").innerHTML = CHECKLIST.map((t,i) => `
+    <div class="chk-row"><span>${esc(t)}</span>
+      <select data-chk="${i}"><option value="">—</option><option>Yes</option><option>No</option><option>N/A</option></select></div>`).join("");
+}
+function buildRails(){
+  $("#rails").innerHTML = RAILS.map(r => `
+    <div class="rail" data-rail="${r.key}">
+      <h3>${r.name}</h3>
+      ${drawToolbar()}
+      <svg class="draw-canvas" data-canvas viewBox="0 0 340 240"></svg>
+      <p class="hint">Box / Line / Arrow: drag on the board to draw it from where you press. Then drag the middle to move, or grab an edge / corner / end to resize. Pen: drag to draw freehand. Label: type text in the box, tap T Label, tap the board (select it later to re-edit). Undo steps back; Delete removes the selected shape (or the last one). Tap a letter box (A, B…) below, then drag on the board — that line's length fills the box (edit the number after if it's a scaled drawing).</p>
+      <div class="dims">
+        ${r.letters.map(L => `<div><label>${L} (mm)</label><input type="text" inputmode="numeric" data-dim="${L}"></div>`).join("")}
+      </div>
+    </div>`).join("");
+  RAILS.forEach(r => initCanvas(document.querySelector(`[data-rail="${r.key}"]`)));
+}
+function buildPinout(){
+  $("#pinout tbody").innerHTML = PIN_COLORS.map((c,i) => `
+    <tr><td>${i+1}</td>
+      <td><input type="text" data-pin-use="${i}" style="width:100%;text-align:left"></td>
+      <td><input type="text" data-pin-color="${i}" value="${c}" style="width:100%"></td></tr>`).join("");
+}
+function rfTable(id, rows, editableLoc){
+  const head = `<thead>
+    <tr><th rowspan="2">Location</th><th colspan="6">Carrier #1 — DU</th><th colspan="6">Carrier #2 — ETISALAT</th></tr>
+    <tr>${METRICS.map(m=>`<th>${METRIC_LBL[m]}</th>`).join("")}${METRICS.map(m=>`<th>${METRIC_LBL[m]}</th>`).join("")}</tr>
+  </thead>`;
+  const body = rows.map((label,ri) => {
+    const spBtn = `<button type="button" class="sptest" data-sp="${id}:${ri}" title="Run speed test for this row">⚡</button>`;
+    const locCell = editableLoc
+      ? `<td class="loc"><input type="text" data-rf="${id}" data-ri="${ri}" data-col="loc" value="${esc(label)}">${spBtn}</td>`
+      : `<td class="loc">${esc(label)} ${spBtn}<input type="hidden" data-rf="${id}" data-ri="${ri}" data-col="loc" value="${esc(label)}"></td>`;
+    const cells = ["du","et"].map(car => METRICS.map(m =>
+      `<td><input type="text" data-rf="${id}" data-ri="${ri}" data-col="${car}.${m}"></td>`).join("")).join("");
+    return `<tr>${locCell}${cells}</tr>`;
+  }).join("");
+  return `<table class="rf">${head}<tbody>${body}</tbody></table>`;
+}
+function buildRf1(){ $("#rf1").innerHTML = rfTable("rf1", RF1_LOCS, true); wireInputs(); }
+function buildFloorTables(){
+  const n = Math.max(0, Math.min(120, parseInt($("#floorCount").value,10) || 0));
+  const prev = collect();
+  const labels = [floorLabel(0)]; for (let i=1;i<=n;i++) labels.push(floorLabel(i));
+  $("#rf2").innerHTML = rfTable("rf2", labels, false);
+  $("#rf3").innerHTML = rfTable("rf3", labels, false);
+  // default bands
+  document.querySelectorAll('[data-rf="rf2"][data-col="du.band"],[data-rf="rf3"][data-col="du.band"]').forEach(el=>el.value="B3");
+  document.querySelectorAll('[data-rf="rf2"][data-col="et.band"],[data-rf="rf3"][data-col="et.band"]').forEach(el=>el.value="B8");
+  wireInputs();
+  restore(prev, { rfOnly:true });   // put back any previously typed floor values by row order
+  save();
+}
+
+/* ---------- photos ---------- */
+function addPhoto(data){
+  const wrap = document.createElement("div");
+  wrap.className = "photo-item";
+  wrap.innerHTML = `
+    <label>Photo / Attachment Description</label>
+    <input type="text" data-photo="desc">
+    <label>Filename / Link</label>
+    <input type="text" data-photo="filename">
+    <input type="file" accept="image/*" data-photo="file" style="margin-top:8px">
+    <img data-photo="img" hidden>
+    <div style="margin-top:8px"><button class="sm ghost" onclick="this.closest('.photo-item').remove();save()">Remove</button></div>`;
+  $("#photos").appendChild(wrap);
+  const img = wrap.querySelector('[data-photo="img"]');
+  if (data){
+    wrap.querySelector('[data-photo="desc"]').value = data.desc || "";
+    wrap.querySelector('[data-photo="filename"]').value = data.filename || "";
+    if (data.img){ img.src = data.img; img.hidden = false; }
+  }
+  wrap.querySelector('[data-photo="file"]').addEventListener("change", async e => {
+    const f = e.target.files[0]; if (!f) return;
+    img.src = await shrink(f); img.hidden = false;
+    if (!wrap.querySelector('[data-photo="filename"]').value) wrap.querySelector('[data-photo="filename"]').value = f.name;
+    save();
+  });
+  wrap.querySelectorAll("input").forEach(i => i.addEventListener("input", save));
+}
+function shrink(file){
+  return new Promise(res => {
+    const r = new FileReader();
+    r.onload = () => {
+      const im = new Image();
+      im.onload = () => {
+        const max = 1600, sc = Math.min(1, max/Math.max(im.width, im.height));
+        const c = document.createElement("canvas");
+        c.width = Math.round(im.width*sc); c.height = Math.round(im.height*sc);
+        c.getContext("2d").drawImage(im, 0, 0, c.width, c.height);
+        res(c.toDataURL("image/jpeg", 0.8));
+      };
+      im.src = r.result;
+    };
+    r.readAsDataURL(file);
+  });
+}
+
+/* ---------- speed test (hosted only — sandbox blocks network) ---------- */
+let activeCarrier = "du";
+function setCarrier(c){
+  activeCarrier = c;
+  document.querySelectorAll("[data-carrier]").forEach(b => b.classList.toggle("on", b.dataset.carrier===c));
+}
+function showTip(msg){
+  let t = document.getElementById("tip");
+  if (!t){
+    t = document.createElement("div"); t.id = "tip";
+    t.style.cssText = "position:fixed;left:50%;bottom:16px;transform:translateX(-50%);background:#1c1f24;color:#fff;padding:10px 14px;border-radius:8px;font-size:13px;z-index:99;max-width:90%;text-align:center;transition:opacity .3s";
+    document.body.appendChild(t);
+  }
+  t.textContent = msg; t.style.opacity = "1";
+  clearTimeout(showTip._t); showTip._t = setTimeout(() => { t.style.opacity = "0"; }, 4000);
+}
+async function cfDown(bytes, signal){
+  const t0 = performance.now();
+  const r = await fetch(`https://speed.cloudflare.com/__down?bytes=${bytes}`, { cache:"no-store", signal });
+  const buf = await r.arrayBuffer();
+  return { bytes: buf.byteLength, ms: performance.now() - t0 };
+}
+async function cfUp(bytes, signal){
+  const t0 = performance.now();
+  await fetch("https://speed.cloudflare.com/__up", { method:"POST", body:new Uint8Array(bytes), cache:"no-store", signal });
+  return { bytes, ms: performance.now() - t0 };
+}
+async function runSpeedTest(prog){
+  const ac = new AbortController();
+  const kill = setTimeout(() => ac.abort(), 30000);
+  try {
+    const pings = [];
+    for (let i=0;i<5;i++){ const d = await cfDown(1, ac.signal); pings.push(d.ms); }
+    pings.sort((a,b) => a-b);
+    const ping = Math.round(pings[2]);
+    prog && prog("↓");
+    let dB=0, dMs=0;
+    for (const sz of [1e6, 5e6, 10e6, 25e6]){ const d = await cfDown(sz, ac.signal); dB+=d.bytes; dMs+=d.ms; if (dMs>10000) break; }
+    const dl = +((dB*8/1e6) / (dMs/1000)).toFixed(1);
+    prog && prog("↑");
+    let uB=0, uMs=0;
+    for (const sz of [1e6, 5e6, 10e6]){ const u = await cfUp(sz, ac.signal); uB+=u.bytes; uMs+=u.ms; if (uMs>10000) break; }
+    const ul = +((uB*8/1e6) / (uMs/1000)).toFixed(1);
+    return { dl, ul, ping };
+  } finally { clearTimeout(kill); }
+}
+async function onSpeedTest(btn){
+  const [id, ri] = btn.dataset.sp.split(":");
+  const q = col => document.querySelector(`[data-rf="${id}"][data-ri="${ri}"][data-col="${activeCarrier}.${col}"]`);
+  const dlIn = q("dl"), ulIn = q("ul");
+  if (!dlIn || !ulIn) return;
+  const orig = btn.textContent;
+  btn.disabled = true; btn.textContent = "…";
+  showTip("Speed test running (" + activeCarrier.toUpperCase() + ")…");
+  try {
+    const { dl, ul, ping } = await runSpeedTest(s => { btn.textContent = s; });
+    dlIn.value = dl; ulIn.value = ul;
+    dlIn.dispatchEvent(new Event("input", { bubbles:true }));
+    ulIn.dispatchEvent(new Event("input", { bubbles:true }));
+    showTip(`${activeCarrier.toUpperCase()} · DL ${dl} / UL ${ul} Mbps · ping ${ping} ms`);
+  } catch (err) {
+    showTip("Speed test failed — hosted version only, or no signal.");
+  } finally {
+    btn.disabled = false; btn.textContent = orig;
+  }
+}
+
+/* ---------- state collect / restore ---------- */
+function collect(){
+  const s = { fields:{}, checklist:{}, rails:{}, pinout:[], rf:{}, photos:[], floorCount:$("#floorCount").value, carrier:activeCarrier };
+  document.querySelectorAll("[data-f]").forEach(el => s.fields[el.dataset.f] = el.value);
+  document.querySelectorAll("[data-chk]").forEach(el => s.checklist[el.dataset.chk] = el.value);
+  document.querySelectorAll("[data-rail]").forEach(r => {
+    const dims = {}; r.querySelectorAll("[data-dim]").forEach(i => dims[i.dataset.dim] = i.value);
+    const cv = r.querySelector("[data-canvas]");
+    s.rails[r.dataset.rail] = { dims, draw: (cv && cv._shapes) || [] };
+  });
+  document.querySelectorAll("[data-pin-use]").forEach(el => {
+    (s.pinout[+el.dataset.pinUse] = s.pinout[+el.dataset.pinUse] || {}).use = el.value; });
+  document.querySelectorAll("[data-pin-color]").forEach(el => {
+    (s.pinout[+el.dataset.pinColor] = s.pinout[+el.dataset.pinColor] || {}).color = el.value; });
+  document.querySelectorAll("[data-rf]").forEach(el => {
+    const k = el.dataset.rf + "|" + el.dataset.ri + "|" + el.dataset.col;
+    s.rf[k] = el.value;
+  });
+  document.querySelectorAll("#photos .photo-item").forEach(p => s.photos.push({
+    desc: p.querySelector('[data-photo="desc"]').value,
+    filename: p.querySelector('[data-photo="filename"]').value,
+    img: (i => i.hidden ? "" : i.src)(p.querySelector('[data-photo="img"]')),
+  }));
+  return s;
+}
+function restore(s, opts={}){
+  if (!s) return;
+  if (!opts.rfOnly){
+    if (s.carrier){ setCarrier(s.carrier); }
+    Object.entries(s.fields||{}).forEach(([k,v]) => { const el=document.querySelector(`[data-f="${k}"]`); if (el) el.value=v; });
+    Object.entries(s.checklist||{}).forEach(([k,v]) => { const el=document.querySelector(`[data-chk="${k}"]`); if (el) el.value=v; });
+    Object.entries(s.rails||{}).forEach(([rk,o]) => {
+      const railEl = document.querySelector(`[data-rail="${rk}"]`); if (!railEl) return;
+      const dims = o.dims || o;
+      Object.entries(dims).forEach(([L,v]) => { const el = railEl.querySelector(`[data-dim="${L}"]`); if (el) el.value = v; });
+      const cv = railEl.querySelector("[data-canvas]");
+      if (cv && Array.isArray(o.draw)){ cv._shapes = o.draw; cv._sel = -1; renderCanvas(cv); }
+    });
+    (s.pinout||[]).forEach((o,i) => {
+      const u=document.querySelector(`[data-pin-use="${i}"]`); if (u) u.value=o.use||"";
+      const c=document.querySelector(`[data-pin-color="${i}"]`); if (c) c.value=o.color||""; });
+    (s.photos||[]).forEach(p => addPhoto(p));
+  }
+  Object.entries(s.rf||{}).forEach(([k,v]) => {
+    const [rf,ri,col] = k.split("|");
+    const el = document.querySelector(`[data-rf="${rf}"][data-ri="${ri}"][data-col="${col}"]`);
+    if (el && el.dataset.col !== "loc") el.value = v;
+  });
+}
+
+/* ---------- persistence ---------- */
+let saveT;
+function save(){
+  clearTimeout(saveT);
+  saveT = setTimeout(() => {
+    try { localStorage.setItem(LS_KEY, JSON.stringify(collect())); $("#banner").style.display="none"; }
+    catch(e){ $("#banner").textContent = "Storage full — photos may not survive a reload. Generate the PDF now."; $("#banner").style.display="block"; }
+  }, 400);
+}
+function wireInputs(){
+  document.querySelectorAll("input,select,textarea").forEach(el => {
+    if (el._wired) return; el._wired = true;
+    el.addEventListener("input", save); el.addEventListener("change", save);
+  });
+}
+function startFresh(){
+  if (!confirm("Clear everything and start a blank sheet?")) return;
+  localStorage.removeItem(LS_KEY);
+  document.querySelectorAll("form,input,textarea").forEach(el => { if (el.tagName!=="INPUT") return; if (el.type==="file") el.value=""; });
+  location.reload();
+}
+function refreshKeep(){ save(); setTimeout(() => location.reload(), 200); }
+
+/* ---------- print / PDF ---------- */
+function doPrint(){
+  const s = collect();
+  const f = $("#printFrame");
+  f.srcdoc = buildPrintDoc(s);
+  f.onload = () => { f.contentWindow.focus(); f.contentWindow.print(); };
+}
+function rfPrintTable(rows){
+  if (!rows.length) return "<p><em>No rows.</em></p>";
+  const h = `<tr><th rowspan="2">Location</th><th colspan="6">Carrier #1 — DU</th><th colspan="6">Carrier #2 — ETISALAT</th></tr>
+    <tr>${METRICS.map(m=>`<th>${METRIC_LBL[m]}</th>`).join("")}${METRICS.map(m=>`<th>${METRIC_LBL[m]}</th>`).join("")}</tr>`;
+  const b = rows.map(r => `<tr><td class="l">${esc(r.loc)}</td>${
+    ["du","et"].map(c => METRICS.map(m => `<td>${esc(r[c][m]||"")}</td>`).join("")).join("")}</tr>`).join("");
+  return `<table class="rf">${h}${b}</table>`;
+}
+function rowsFromState(s, id){
+  const map = {};
+  Object.entries(s.rf).forEach(([k,v]) => { const [rf,ri,col]=k.split("|"); if (rf!==id) return;
+    (map[ri] = map[ri] || {du:{},et:{}});
+    if (col==="loc") map[ri].loc=v; else { const [c,m]=col.split("."); map[ri][c][m]=v; } });
+  return Object.keys(map).sort((a,b)=>a-b).map(i => map[i]);
+}
+function buildPrintDoc(s){
+  const F = s.fields;
+  const chk = CHECKLIST.map((t,i) => `<tr><td>${esc(t)}</td><td class="c">${esc(s.checklist[i]||"")}</td></tr>`).join("");
+  const railBlock = RAILS.map(r => {
+    const d = s.rails[r.key] || {};
+    const dims = d.dims || d;
+    const line = r.letters.map(L => `${L}: ${esc(dims[L]||"—")}mm`).join("&nbsp;&nbsp; ");
+    return `<div class="rail"><h4>${r.name}</h4>${railPrintSvg(d.draw||[])}<p class="dims"><strong>Measurements:</strong> ${line}</p></div>`;
+  }).join("");
+  const pin = (s.pinout||[]).map((o,i) => `<tr><td class="c">${i+1}</td><td>${esc(o.use||"")}</td><td>${esc(o.color||"")}</td></tr>`).join("");
+  const photos = (s.photos||[]).map(p => `<div class="ph">
+    <table class="kv"><tr><td>Photo / Attachment Description</td><td>${esc(p.desc)}</td></tr>
+    <tr><td>Filename / Link</td><td>${esc(p.filename)}</td></tr></table>
+    ${p.img ? `<img src="${p.img}">` : ""}</div>`).join("");
+
+  return `<!doctype html><html><head><meta charset="utf-8"><style>
+    @page { size:A4; margin:16mm; }
+    body { font:11px/1.35 "Helvetica Neue",Arial,sans-serif; color:#111; }
+    h1 { font-size:18px; margin:0 0 2px; } h2 { font-size:13px; border-bottom:1px solid #333; margin:16px 0 6px; }
+    h3 { font-size:12px; margin:10px 0 4px; } h4 { font-size:11px; margin:8px 0 4px; }
+    table { border-collapse:collapse; width:100%; margin:4px 0; }
+    td,th { border:1px solid #666; padding:3px 5px; vertical-align:top; }
+    th { background:#e9edf2; } td.c,th.c { text-align:center; } td.l { text-align:left; font-weight:bold; white-space:nowrap; }
+    table.rf td,table.rf th { font-size:8.5px; padding:2px; text-align:center; }
+    table.kv td:first-child { width:38%; background:#f2f4f7; font-weight:bold; }
+    .rail { page-break-inside:avoid; margin-bottom:10px; }
+    .rail svg { width:280px; height:auto; }
+    .rail .dims { margin:2px 0; }
+    .ph { page-break-inside:avoid; margin-bottom:12px; }
+    .ph img { max-width:48%; max-height:70mm; border:1px solid #999; margin-top:4px; }
+    .pb { page-break-before:always; }
+    .hdr td:first-child { width:30%; background:#f2f4f7; font-weight:bold; }
+  </style></head><body>
+    <h1>SITE VISIT SHEET</h1><div>Elevator Assessment &amp; RF / LTE Scan</div>
+    <table class="hdr">
+      <tr><td>Document Ref</td><td>${esc(F.doc_ref)}</td><td>Prepared By</td><td>${esc(F.prepared_by)}</td></tr>
+      <tr><td>Date</td><td>${esc(F.date)}</td><td>Version</td><td>${esc(F.version)}</td></tr>
+      <tr><td>Project / Activity</td><td colspan="3">${esc(F.project)}</td></tr>
+      <tr><td>Site Name</td><td colspan="3">${esc(F.site_name)}</td></tr>
+      <tr><td>Client</td><td colspan="3">${esc(F.client)}</td></tr>
+      <tr><td>Full Address</td><td colspan="3">${esc(F.address)}</td></tr>
+      <tr><td>Google Maps Pin / Link</td><td colspan="3">${esc(F.maps_link)}</td></tr>
+    </table>
+
+    <h2>1. Scope of Work — 1.1 Elevator Assessment</h2>
+    <table>${chk}</table>
+    <p><strong>Note:</strong> ${esc(F.checklist_note)}</p>
+
+    <h2>2. Technical Findings — Elevator</h2>
+    <table class="hdr">
+      <tr><td>Elevator OEM</td><td>${esc(F.elev_oem)}</td></tr>
+      <tr><td>Elevator Model / Series</td><td>${esc(F.elev_model)}</td></tr>
+      <tr><td>Elevator ID</td><td>${esc(F.elev_id)}</td></tr>
+      <tr><td>Elevator Maintenance Company</td><td>${esc(F.elev_maint)}</td></tr>
+      <tr><td>Available Plug Point(s) on top of the elevator</td><td>${esc(F.plug_points)}</td></tr>
+    </table>
+    ${railBlock}
+    <p><strong>Notes:</strong> ${esc(F.rail_note)}</p>
+
+    <h2>3. Technical Findings — LTE / RF Survey</h2>
+    <table class="hdr">
+      <tr><td>Network(s) Tested</td><td>${esc(F.networks)}</td></tr>
+      <tr><td>App / Survey Point</td><td>${esc(F.survey_point)}</td></tr>
+      <tr><td>Overall Feasibility</td><td>${esc(F.feasibility)}</td></tr>
+    </table>
+    <h3>3.1 RF Measurements (Charging Area + Building Lobby)</h3>
+    ${rfPrintTable(rowsFromState(s,"rf1"))}
+    <div class="pb"></div>
+    <h3>3.2 RF Measurements (On top of elevator cabin)</h3>
+    ${rfPrintTable(rowsFromState(s,"rf2"))}
+    <div class="pb"></div>
+    <h3>3.3 RF Measurements (Inside elevator cabin)</h3>
+    ${rfPrintTable(rowsFromState(s,"rf3"))}
+
+    <h2>4.0 Elevator Integration Checks</h2>
+    <table class="hdr">
+      <tr><td>Button module SKU</td><td>${esc(F.btn_sku)}</td></tr>
+      <tr><td>Connectors used on the button module</td><td>${esc(F.btn_connectors)}</td></tr>
+    </table>
+    <table><tr><th class="c">PIN</th><th>USE</th><th>Color</th></tr>${pin}</table>
+
+    <h2>5. Photos &amp; Attachments</h2>
+    ${photos || "<p><em>None.</em></p>"}
+  </body></html>`;
+}
+
+/* ---------- init ---------- */
+buildChecklist();
+buildRails();
+buildPinout();
+buildRf1();
+let saved = null;
+try { saved = JSON.parse(localStorage.getItem(LS_KEY) || "null"); } catch(e){}
+$("#floorCount").value = (saved && saved.floorCount) || "25";
+buildFloorTables();
+if (saved) restore(saved);
+wireInputs();
+document.querySelectorAll("[data-carrier]").forEach(b => b.addEventListener("click", () => { setCarrier(b.dataset.carrier); save(); }));
+document.addEventListener("click", e => { const b = e.target.closest(".sptest"); if (b) onSpeedTest(b); });
+</script>
+</body>
+</html>
