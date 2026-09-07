@@ -27,6 +27,9 @@ import com.getcapacitor.annotation.Permission;
 import com.getcapacitor.annotation.PermissionCallback;
 
 import java.util.List;
+import java.util.concurrent.CountDownLatch;
+import java.util.concurrent.Executors;
+import java.util.concurrent.TimeUnit;
 
 /**
  * Reads serving-cell RSRP / RSRQ / SINR / band from the modem. Android only.
@@ -77,9 +80,14 @@ public class CellSignalPlugin extends Plugin {
             TelephonyManager tm = forCarrier(base, call.getString("carrier"));
             JSObject r = new JSObject();
 
+            List<CellInfo> cells = freshCellInfo(tm);
+
             boolean gotSignal = fromSignalStrength(tm, r);
-            if (!gotSignal) gotSignal = fromCellInfo(tm, r);   // fallback for signal
-            try { addBand(tm, r); } catch (Throwable ignore) {} // best-effort, never throws out
+            if (!gotSignal) gotSignal = fromCellInfo(cells, r);   // fallback for signal
+            try { addBand(cells, r); } catch (Throwable ignore) {} // best-effort
+
+            boolean locOk = getPermissionState("location") == PermissionState.GRANTED;
+            if (!r.has("band")) r.put("bandHint", locOk ? "no-cell-identity" : "need-location");
 
             if (!r.has("rsrp") && !r.has("rsrq")) {
                 call.reject("No signal data — check the SIM is active, then retry");
@@ -123,11 +131,28 @@ public class CellSignalPlugin extends Plugin {
         return false;
     }
 
-    /* ---- fallback: getAllCellInfo signal ---- */
+    /* ---- force a fresh cell-info read (API 29+), fall back to cached ---- */
     @SuppressLint("MissingPermission")
-    private boolean fromCellInfo(TelephonyManager tm, JSObject r) {
-        List<CellInfo> cells;
-        try { cells = tm.getAllCellInfo(); } catch (SecurityException se) { return false; }
+    private List<CellInfo> freshCellInfo(TelephonyManager tm) {
+        if (Build.VERSION.SDK_INT >= 29) {
+            final CountDownLatch latch = new CountDownLatch(1);
+            @SuppressWarnings("unchecked")
+            final List<CellInfo>[] box = new List[]{ null };
+            try {
+                tm.requestCellInfoUpdate(Executors.newSingleThreadExecutor(),
+                    new TelephonyManager.CellInfoCallback() {
+                        @Override public void onCellInfo(List<CellInfo> ci) { box[0] = ci; latch.countDown(); }
+                        @Override public void onError(int code, Throwable e) { latch.countDown(); }
+                    });
+                latch.await(3, TimeUnit.SECONDS);
+            } catch (Throwable ignore) {}
+            if (box[0] != null && !box[0].isEmpty()) return box[0];
+        }
+        try { return tm.getAllCellInfo(); } catch (SecurityException se) { return null; }
+    }
+
+    /* ---- fallback: getAllCellInfo signal ---- */
+    private boolean fromCellInfo(List<CellInfo> cells, JSObject r) {
         if (cells == null) return false;
         for (CellInfo ci : cells) {
             if (!ci.isRegistered()) continue;
@@ -159,9 +184,7 @@ public class CellSignalPlugin extends Plugin {
     }
 
     /* ---- best-effort band from cell identity (needs location on Android 10+) ---- */
-    @SuppressLint("MissingPermission")
-    private void addBand(TelephonyManager tm, JSObject r) {
-        List<CellInfo> cells = tm.getAllCellInfo();
+    private void addBand(List<CellInfo> cells, JSObject r) {
         if (cells == null) return;
         for (CellInfo ci : cells) {
             if (!ci.isRegistered()) continue;

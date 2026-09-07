@@ -171,7 +171,7 @@
     <div id="photos"></div>
   </section>
 
-  <div class="stamp">build v2026-09-07-p</div>
+  <div class="stamp">build v2026-09-07-q</div>
 </main>
 
 <iframe id="printFrame" style="position:fixed;width:0;height:0;border:0;left:-9999px"></iframe>
@@ -587,7 +587,9 @@ async function onSignalRead(btn){
     set("rsrp", r.rsrp); set("rsrq", r.rsrq); set("sinr", r.sinr); set("band", r.band);
     let msg = `${activeCarrier.toUpperCase()} ${r.tech||""} · RSRP ${r.rsrp} RSRQ ${r.rsrq}` +
       (r.sinr != null ? ` SINR ${r.sinr}` : "");
-    msg += r.band ? ` ${r.band}` : " · Band: set Location ON to auto-read";
+    if (r.band) msg += ` ${r.band}`;
+    else if (r.bandHint === "need-location") msg += " · Band: allow Location + turn Location ON, then retry";
+    else msg += " · Band unavailable from this cell — type it";
     showTip(msg);
   } catch (err) {
     const m = (err && (err.message || err.errorMessage)) || "unknown";
