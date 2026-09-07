@@ -163,11 +163,15 @@
 
   <section class="card">
     <h2>5. Photos &amp; Attachments</h2>
+    <p class="hint">First time on a phone, tap “Allow camera &amp; storage” and accept the prompts so the camera works when adding photos.</p>
+    <div style="display:flex;gap:8px;flex-wrap:wrap;margin-bottom:8px">
+      <button class="sm" onclick="requestPerms()">Allow camera &amp; storage</button>
+      <button class="sm ghost" onclick="addPhoto()">+ Add photo / attachment</button>
+    </div>
     <div id="photos"></div>
-    <button class="sm ghost" onclick="addPhoto()">+ Add photo / attachment</button>
   </section>
 
-  <div class="stamp">build v2026-09-07-l</div>
+  <div class="stamp">build v2026-09-07-m</div>
 </main>
 
 <iframe id="printFrame" style="position:fixed;width:0;height:0;border:0;left:-9999px"></iframe>
@@ -547,6 +551,20 @@ function shrink(file){
     };
     r.readAsDataURL(file);
   });
+}
+
+/* ---------- permissions ---------- */
+async function requestPerms(){
+  let cam = "n/a";
+  try {
+    const st = await navigator.mediaDevices.getUserMedia({ video:true });
+    st.getTracks().forEach(t => t.stop());
+    cam = "granted";
+  } catch (e) { cam = e && e.name ? e.name : "denied"; }
+  try {
+    if (navigator.permissions){ await navigator.permissions.query({ name:"geolocation" }); }
+  } catch (e) {}
+  showTip("Camera: " + cam + ". If denied, enable it in the app's system settings.");
 }
 
 /* ---------- speed test (hosted only — sandbox blocks network) ---------- */
