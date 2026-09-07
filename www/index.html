@@ -5,58 +5,143 @@
 <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1">
 <title>Site Visit Sheet — Elevator Assessment &amp; RF/LTE Scan</title>
 <style>
-  :root { --bd:#c9ccd2; --hd:#2f3640; --accent:#1652c9; --bg:#f4f5f7; }
-  * { box-sizing:border-box; }
-  body { margin:0; font:15px/1.4 -apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,sans-serif; background:var(--bg); color:#1c1f24; }
-  header.app { background:var(--hd); color:#fff; padding:14px 16px; position:sticky; top:0; z-index:20; }
-  header.app h1 { margin:0; font-size:16px; font-weight:600; }
-  header.app .bar { margin-top:8px; display:flex; gap:8px; flex-wrap:wrap; }
-  main { max-width:960px; margin:0 auto; padding:16px; }
-  section.card { background:#fff; border:1px solid var(--bd); border-radius:8px; padding:14px; margin-bottom:16px; }
-  section.card > h2 { margin:0 0 10px; font-size:15px; color:var(--accent); border-bottom:1px solid var(--bd); padding-bottom:6px; }
-  h3 { font-size:14px; margin:14px 0 6px; }
-  label { display:block; font-size:12px; font-weight:600; color:#4a4f57; margin:8px 0 3px; }
-  input[type=text], input[type=date], input[type=url], textarea, select {
-    width:100%; padding:9px 10px; border:1px solid var(--bd); border-radius:6px; font:inherit; background:#fff; }
-  textarea { min-height:60px; resize:vertical; }
-  .grid2 { display:grid; grid-template-columns:1fr 1fr; gap:10px; }
-  @media (max-width:620px){ .grid2 { grid-template-columns:1fr; } }
-  .chk-row { display:grid; grid-template-columns:1fr 92px; gap:8px; align-items:center; padding:5px 0; border-bottom:1px dashed #e3e5e8; }
-  .chk-row span { font-size:13px; }
-  button { font:inherit; padding:9px 14px; border-radius:6px; border:1px solid var(--hd); background:var(--hd); color:#fff; cursor:pointer; }
+  :root {
+    --bd:#d7dae0; --bd-soft:#e7e9ee;
+    --hd:#20242c; --accent:#1e5fd6; --accent-soft:#eaf1fd;
+    --bg:#eef0f4; --card:#ffffff; --ink:#1b1e24; --muted:#6b7280;
+    --ok:#137a4b; --warn:#b23c17; --danger:#c0392b;
+    --r:12px; --r-sm:8px;
+    --sh:0 1px 2px rgba(20,24,34,.06), 0 4px 16px rgba(20,24,34,.05);
+  }
+  * { box-sizing:border-box; -webkit-tap-highlight-color:transparent; }
+  html, body { overflow-x:hidden; }
+  body {
+    margin:0; color:var(--ink); background:var(--bg);
+    font:15px/1.45 -apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,"Helvetica Neue",sans-serif;
+    -webkit-text-size-adjust:100%;
+  }
+
+  header.app {
+    background:var(--hd); color:#fff; padding:12px 16px calc(12px + env(safe-area-inset-bottom,0));
+    padding-top:calc(12px + env(safe-area-inset-top,0));
+    position:sticky; top:0; z-index:20; box-shadow:0 2px 12px rgba(0,0,0,.18);
+  }
+  header.app h1 { margin:0; font-size:15px; font-weight:650; letter-spacing:.2px; }
+  header.app .bar { margin-top:10px; display:flex; gap:8px; flex-wrap:wrap; }
+
+  main { max-width:920px; margin:0 auto; padding:16px 14px 40px; }
+
+  section.card {
+    background:var(--card); border:1px solid var(--bd-soft); border-radius:var(--r);
+    padding:16px 15px; margin-bottom:14px; box-shadow:var(--sh);
+  }
+  section.card > h2 {
+    margin:0 0 12px; font-size:13px; font-weight:700; letter-spacing:.6px;
+    text-transform:uppercase; color:var(--accent);
+    display:flex; align-items:center; gap:8px;
+  }
+  section.card > h2::before {
+    content:""; width:4px; height:15px; border-radius:2px; background:var(--accent); flex:none;
+  }
+  h3 { font-size:13px; font-weight:700; margin:16px 0 8px; color:var(--ink); }
+
+  label { display:block; font-size:11px; font-weight:650; letter-spacing:.3px; text-transform:uppercase;
+    color:var(--muted); margin:10px 0 4px; }
+  input[type=text], input[type=date], input[type=url], input[type=number], textarea, select {
+    width:100%; padding:10px 11px; border:1px solid var(--bd); border-radius:var(--r-sm);
+    font:inherit; background:#fff; color:var(--ink); transition:border-color .12s, box-shadow .12s;
+  }
+  input:focus, textarea:focus, select:focus {
+    outline:none; border-color:var(--accent); box-shadow:0 0 0 3px var(--accent-soft);
+  }
+  textarea { min-height:64px; resize:vertical; }
+
+  .grid2 { display:grid; grid-template-columns:1fr 1fr; gap:10px 12px; }
+  @media (max-width:600px){ .grid2 { grid-template-columns:1fr; } }
+
+  .chk-row { display:grid; grid-template-columns:1fr 104px; gap:10px; align-items:center;
+    padding:9px 0; border-bottom:1px solid var(--bd-soft); }
+  .chk-row:last-child { border-bottom:0; }
+  .chk-row span { font-size:13px; line-height:1.35; }
+  .chk-row select { padding:8px 9px; }
+
+  button { font:inherit; font-weight:600; padding:10px 15px; border-radius:var(--r-sm);
+    border:1px solid var(--hd); background:var(--hd); color:#fff; cursor:pointer; }
+  button:active { transform:translateY(1px); }
   button.ghost { background:#fff; color:var(--hd); }
-  button.sm { padding:6px 10px; font-size:13px; }
-  .rf-wrap { overflow-x:auto; border:1px solid var(--bd); border-radius:6px; }
-  table.rf { border-collapse:collapse; min-width:900px; font-size:12px; }
-  table.rf th, table.rf td { border:1px solid var(--bd); padding:2px; text-align:center; }
-  table.rf th { background:#eef1f5; position:sticky; }
-  table.rf td input { width:64px; padding:5px 4px; border:1px solid #dfe2e6; border-radius:4px; text-align:center; }
-  table.rf td.loc { text-align:left; white-space:nowrap; font-weight:600; padding:4px 8px; background:#fafbfc; }
-  table.rf td.loc input { width:150px; text-align:left; }
-  .rail { border:1px solid var(--bd); border-radius:6px; padding:10px; margin-bottom:12px; }
+  button.sm { padding:7px 11px; font-size:13px; }
+  button.block { display:block; width:100%; padding:14px; font-size:15px; font-weight:700;
+    background:var(--accent); border-color:var(--accent); }
+
+  /* RF tables — one carrier at a time so they fit the screen */
+  .rf-wrap { overflow-x:auto; -webkit-overflow-scrolling:touch;
+    border:1px solid var(--bd-soft); border-radius:var(--r-sm); }
+  table.rf { border-collapse:collapse; width:100%; font-size:12px; }
+  table.rf th, table.rf td { border:1px solid var(--bd-soft); padding:3px; text-align:center; }
+  table.rf th { background:#f1f3f7; font-size:10px; font-weight:700; letter-spacing:.2px;
+    text-transform:uppercase; color:var(--muted); }
+  table.rf td input { width:100%; min-width:44px; padding:7px 3px; border:1px solid var(--bd);
+    border-radius:6px; text-align:center; font-size:12px; }
+  table.rf td.loc { text-align:left; white-space:nowrap; font-weight:700; font-size:12px;
+    padding:6px 8px; background:#fafbfc; position:sticky; left:0; z-index:1; }
+  table.rf td.loc .locwrap { display:flex; align-items:center; gap:4px; }
+  table.rf td.loc input { width:96px; text-align:left; }
+  table.rf col.c-metric { width:12%; }
+  table.rf col.c-loc { width:28%; }
+  table.rf .car-du, table.rf .car-et { display:none; }
+  table.rf[data-active="du"] .car-du { display:table-cell; }
+  table.rf[data-active="et"] .car-et { display:table-cell; }
+
+  .rail { border:1px solid var(--bd-soft); border-radius:var(--r-sm); padding:12px; margin-bottom:12px; background:#fcfcfd; }
   .rail h3 { margin-top:0; }
-  .rail svg { display:block; max-width:340px; width:100%; height:auto; margin:4px 0 8px; }
+  .rail svg { display:block; max-width:100%; width:340px; height:auto; margin:4px 0 8px; }
   .draw-tools { display:flex; flex-wrap:wrap; gap:6px; margin:6px 0; align-items:center; }
-  .draw-tools button { padding:6px 10px; font-size:13px; background:#fff; color:var(--hd); border:1px solid var(--bd); }
+  .draw-tools button { padding:7px 11px; font-size:13px; background:#fff; color:var(--hd); border:1px solid var(--bd); }
   .draw-tools button.on { background:var(--hd); color:#fff; }
-  .draw-tools .lbl-in { width:110px; padding:6px 8px; border:1px solid var(--bd); border-radius:6px; font-size:13px; }
-  .draw-canvas { border:1px solid var(--bd); border-radius:6px; background:#fff; touch-action:none; }
-  .carrier-pick { display:flex; gap:6px; }
-  .carrier-pick button { padding:7px 18px; font-size:13px; background:#fff; color:var(--hd); border:1px solid var(--bd); border-radius:6px; }
-  .carrier-pick button.on { background:var(--accent); color:#fff; border-color:var(--accent); }
-  .sptest { padding:2px 6px; font-size:12px; line-height:1.4; border:1px solid var(--bd); background:#fff; border-radius:4px; margin-left:6px; vertical-align:middle; }
-  .sptest:disabled { opacity:.5; }
-  .draw-canvas.arming { border-color:var(--accent); box-shadow:0 0 0 2px rgba(22,82,201,.25); }
+  .draw-tools .lbl-in { width:110px; padding:7px 9px; border:1px solid var(--bd); border-radius:6px; font-size:13px; }
+  .draw-canvas { border:1px solid var(--bd); border-radius:var(--r-sm); background:#fff; touch-action:none; width:100%; }
+  .draw-canvas.arming { border-color:var(--accent); box-shadow:0 0 0 3px var(--accent-soft); }
   .draw-tools .arm { font-size:12px; color:var(--accent); font-weight:700; }
   .draw-tools .arm:empty { display:none; }
-  .rail .dims { display:grid; grid-template-columns:repeat(auto-fill,minmax(90px,1fr)); gap:8px; }
+  .rail .dims { display:grid; grid-template-columns:repeat(auto-fill,minmax(84px,1fr)); gap:8px; }
   .rail .dims label { margin:0; }
-  .rail .dims input { padding:6px 8px; }
-  .photo-item { border:1px solid var(--bd); border-radius:6px; padding:10px; margin-bottom:10px; }
-  .photo-item img { max-height:150px; border-radius:4px; margin-top:6px; display:block; }
-  .banner { display:none; background:#c0392b; color:#fff; padding:10px 14px; border-radius:6px; margin-bottom:12px; font-size:13px; }
-  .hint { font-size:12px; color:#6b7079; margin:4px 0; }
-  .stamp { font-size:11px; color:#9aa0a8; text-align:center; margin-top:20px; }
+  .rail .dims input { padding:7px 8px; }
+
+  .carrier-pick { display:inline-flex; gap:0; border:1px solid var(--bd); border-radius:var(--r-sm); overflow:hidden; }
+  .carrier-pick button { padding:9px 22px; font-size:14px; font-weight:700; background:#fff; color:var(--hd); border:0; border-right:1px solid var(--bd); }
+  .carrier-pick button:last-child { border-right:0; }
+  .carrier-pick button.on { background:var(--accent); color:#fff; }
+
+  .sptest { padding:5px 8px; font-size:13px; line-height:1; border:1px solid var(--bd);
+    background:#fff; border-radius:6px; vertical-align:middle; }
+  .sptest:disabled { opacity:.5; }
+
+  .photo-item { border:1px solid var(--bd-soft); border-radius:var(--r-sm); padding:12px; margin-bottom:10px; background:#fcfcfd; }
+  .photo-item img { max-height:160px; border-radius:6px; margin-top:8px; display:block; }
+
+  .banner { display:none; background:var(--danger); color:#fff; padding:10px 14px; border-radius:var(--r-sm); margin-bottom:12px; font-size:13px; }
+  .hint { font-size:12px; line-height:1.45; color:var(--muted); margin:6px 0; }
+  .stamp { font-size:11px; color:#9aa0a8; text-align:center; margin-top:22px; }
+
+  /* permission gate */
+  #permGate { position:fixed; inset:0; z-index:100; display:none;
+    align-items:center; justify-content:center; padding:22px;
+    background:rgba(20,24,34,.45); backdrop-filter:blur(7px); -webkit-backdrop-filter:blur(7px); }
+  #permGate.show { display:flex; }
+  #permGate .sheet { background:var(--card); border-radius:var(--r); max-width:400px; width:100%;
+    padding:22px 20px; box-shadow:0 20px 60px rgba(0,0,0,.35); }
+  #permGate h2 { margin:0 0 6px; font-size:17px; }
+  #permGate p { margin:0 0 14px; font-size:13px; color:var(--muted); line-height:1.5; }
+  #permGate ul { list-style:none; margin:0 0 16px; padding:0; }
+  #permGate li { display:flex; gap:10px; align-items:flex-start; padding:8px 0; font-size:13px; border-bottom:1px solid var(--bd-soft); }
+  #permGate li:last-child { border-bottom:0; }
+  #permGate li .ic { width:26px; height:26px; flex:none; border-radius:7px; background:var(--accent-soft);
+    display:flex; align-items:center; justify-content:center; font-size:14px; }
+  #permGate li .st { margin-left:auto; font-size:12px; font-weight:700; color:var(--muted); }
+  #permGate li .st.ok { color:var(--ok); }
+  #permGate li .st.no { color:var(--warn); }
+  #permGate .skip { display:block; width:100%; margin-top:10px; background:none; border:0; color:var(--muted);
+    font-size:13px; text-decoration:underline; padding:8px; }
 </style>
   <link rel="manifest" href="manifest.webmanifest">
   <meta name="apple-mobile-web-app-capable" content="yes">
@@ -64,10 +149,24 @@
   <meta name="apple-mobile-web-app-title" content="RF Survey">
 </head>
 <body>
+<div id="permGate">
+  <div class="sheet">
+    <h2>Set up access</h2>
+    <p>This survey app needs a few permissions before you start. Grant them once and you won't be asked again.</p>
+    <ul>
+      <li><span class="ic">📶</span><span>Phone &amp; Location — read RSRP / RSRQ / SINR / band from the modem<br><span class="hint">Turn the Location toggle ON too, for the band value.</span></span><span class="st" data-pg="signal">—</span></li>
+      <li><span class="ic">📷</span><span>Camera — take site photos in Section 5</span><span class="st" data-pg="camera">—</span></li>
+      <li><span class="ic">🌐</span><span>Network — run the download / upload speed test</span><span class="st ok" data-pg="net">on</span></li>
+    </ul>
+    <button class="block" id="pgAllow">Allow all</button>
+    <button class="skip" id="pgSkip">Continue without — I'll allow later</button>
+  </div>
+</div>
+
 <header class="app">
-  <h1>Site Visit Sheet — Elevator Assessment &amp; RF/LTE Scan</h1>
+  <h1>Elevator Assessment &amp; RF / LTE Survey</h1>
   <div class="bar">
-    <button class="sm" onclick="doPrint()">🖨️ Generate PDF</button>
+    <button class="sm" onclick="doPrint()">📄 Generate PDF</button>
     <button class="sm ghost" onclick="startFresh()">Start Fresh</button>
     <button class="sm ghost" onclick="refreshKeep()">🔄 Refresh</button>
   </div>
@@ -122,12 +221,12 @@
       <div><label>Overall Feasibility</label><input type="text" data-f="feasibility"></div>
     </div>
 
-    <label>Speed-test carrier</label>
+    <label>Carrier being measured</label>
     <div class="carrier-pick">
       <button type="button" data-carrier="du" class="on">DU</button>
       <button type="button" data-carrier="et">e&amp;</button>
     </div>
-    <p class="hint">Pick the carrier, then per row: <b>📶</b> reads RSRP / RSRQ / SINR / Band from the phone's modem (Android app only — turn Location ON and allow Phone + Location the first time). <b>⚡</b> runs a real download / upload speed test and fills DL / UL. Values write into the selected carrier's columns.</p>
+    <p class="hint">The table shows one carrier at a time — switch here to enter the other. Per row: <b>📶</b> reads RSRP / RSRQ / SINR / Band from the modem (Android app; turn Location ON for band). <b>⚡</b> runs a download / upload speed test and fills DL / UL. Both carriers' values are kept and printed in the PDF.</p>
 
     <h3>3.1 RF Measurements (Charging Area + Building Lobby)</h3>
     <div id="rf1" class="rf-wrap"></div>
@@ -163,15 +262,20 @@
 
   <section class="card">
     <h2>5. Photos &amp; Attachments</h2>
-    <p class="hint">First time on a phone: tap “Allow permissions”, accept Camera, Location and Phone. Location + Phone are needed for the 📶 signal read; Camera for photos.</p>
     <div style="display:flex;gap:8px;flex-wrap:wrap;margin-bottom:8px">
-      <button class="sm" onclick="requestPerms()">Allow permissions</button>
       <button class="sm ghost" onclick="addPhoto()">+ Add photo / attachment</button>
+      <button class="sm ghost" onclick="openPermGate()">Permissions</button>
     </div>
     <div id="photos"></div>
   </section>
 
-  <div class="stamp">build v2026-09-07-q</div>
+  <section class="card">
+    <h2>Finish</h2>
+    <p class="hint">Builds a printable report from everything above. On the print dialog choose “Save as PDF”.</p>
+    <button class="block" onclick="doPrint()">📄 Generate PDF report</button>
+  </section>
+
+  <div class="stamp">build v2026-09-07-r</div>
 </main>
 
 <iframe id="printFrame" style="position:fixed;width:0;height:0;border:0;left:-9999px"></iframe>
@@ -478,21 +582,26 @@ function buildPinout(){
       <td><input type="text" data-pin-color="${i}" value="${c}" style="width:100%"></td></tr>`).join("");
 }
 function rfTable(id, rows, editableLoc){
-  const head = `<thead>
-    <tr><th rowspan="2">Location</th><th colspan="6">Carrier #1 — DU</th><th colspan="6">Carrier #2 — ETISALAT</th></tr>
-    <tr>${METRICS.map(m=>`<th>${METRIC_LBL[m]}</th>`).join("")}${METRICS.map(m=>`<th>${METRIC_LBL[m]}</th>`).join("")}</tr>
-  </thead>`;
+  const cols = `<colgroup><col class="c-loc">` +
+    METRICS.map(() => `<col class="c-metric car-du">`).join("") +
+    METRICS.map(() => `<col class="c-metric car-et">`).join("") + `</colgroup>`;
+  const head = `<thead><tr><th class="loc">Location</th>` +
+      METRICS.map(m => `<th class="car-du">${METRIC_LBL[m]}</th>`).join("") +
+      METRICS.map(m => `<th class="car-et">${METRIC_LBL[m]}</th>`).join("") +
+    `</tr></thead>`;
   const body = rows.map((label,ri) => {
-    const spBtn = `<button type="button" class="sptest" data-sp="${id}:${ri}" title="Run speed test for this row">⚡</button>`;
-    const sigBtn = `<button type="button" class="sptest sigread" data-sig="${id}:${ri}" title="Read RSRP / RSRQ / SINR / Band from the phone (Android app only)">📶</button>`;
-    const locCell = editableLoc
-      ? `<td class="loc"><input type="text" data-rf="${id}" data-ri="${ri}" data-col="loc" value="${esc(label)}">${sigBtn}${spBtn}</td>`
-      : `<td class="loc">${esc(label)} ${sigBtn}${spBtn}<input type="hidden" data-rf="${id}" data-ri="${ri}" data-col="loc" value="${esc(label)}"></td>`;
+    const spBtn = `<button type="button" class="sptest" data-sp="${id}:${ri}" title="Speed test this row">⚡</button>`;
+    const sigBtn = `<button type="button" class="sptest sigread" data-sig="${id}:${ri}" title="Read signal from the phone (Android app)">📶</button>`;
+    const locInner = editableLoc
+      ? `<input type="text" data-rf="${id}" data-ri="${ri}" data-col="loc" value="${esc(label)}">`
+      : `<span>${esc(label)}</span><input type="hidden" data-rf="${id}" data-ri="${ri}" data-col="loc" value="${esc(label)}">`;
+    const locCell = `<td class="loc"><div class="locwrap">${locInner}${sigBtn}${spBtn}</div></td>`;
     const cells = ["du","et"].map(car => METRICS.map(m =>
-      `<td><input type="text" data-rf="${id}" data-ri="${ri}" data-col="${car}.${m}"></td>`).join("")).join("");
+      `<td class="car-${car}"><input type="text" inputmode="numeric" data-rf="${id}" data-ri="${ri}" data-col="${car}.${m}"></td>`
+    ).join("")).join("");
     return `<tr>${locCell}${cells}</tr>`;
   }).join("");
-  return `<table class="rf">${head}<tbody>${body}</tbody></table>`;
+  return `<table class="rf" data-active="${activeCarrier}">${cols}${head}<tbody>${body}</tbody></table>`;
 }
 function buildRf1(){ $("#rf1").innerHTML = rfTable("rf1", RF1_LOCS, true); wireInputs(); }
 function buildFloorTables(){
@@ -600,23 +709,44 @@ async function onSignalRead(btn){
 }
 
 /* ---------- permissions ---------- */
-async function requestPerms(){
-  let cam = "n/a", loc = "n/a", sig = "n/a";
+const PERMS_FLAG = "svs_perms_done_v1";
+function pgSet(key, ok){
+  const el = document.querySelector(`[data-pg="${key}"]`);
+  if (!el) return;
+  el.textContent = ok ? "granted" : "needed";
+  el.className = "st " + (ok ? "ok" : "no");
+}
+function openPermGate(){ document.getElementById("permGate").classList.add("show"); }
+function closePermGate(){ document.getElementById("permGate").classList.remove("show"); }
+
+async function runPermFlow(){
+  let cam = false, sig = false;
+  // camera
   try {
     const st = await navigator.mediaDevices.getUserMedia({ video:true });
     st.getTracks().forEach(t => t.stop());
-    cam = "ok";
-  } catch (e) { cam = (e && e.name) || "denied"; }
+    cam = true;
+  } catch (e) {}
+  pgSet("camera", cam);
+  // location (browser side, harmless in app — the native prompt comes from CellSignal)
   try {
     await new Promise((res, rej) => navigator.geolocation.getCurrentPosition(res, rej, { timeout:8000 }));
-    loc = "ok";
-  } catch (e) { loc = "denied/off"; }
+  } catch (e) {}
+  // phone + location for signal (native)
   const CellSignal = getCellSignal();
   if (CellSignal){
-    try { await CellSignal.read({ carrier: activeCarrier }); sig = "ok"; }
-    catch (e) { sig = (e && (e.message || e.errorMessage)) || "denied"; }
+    try { await CellSignal.read({ carrier: activeCarrier }); sig = true; }
+    catch (e) { sig = false; }
+  } else {
+    sig = true; // web: nothing to grant here
   }
-  showTip(`Camera: ${cam} · Location: ${loc}` + (CellSignal ? ` · Signal: ${sig}` : ""));
+  pgSet("signal", sig);
+  return cam && sig;
+}
+async function requestPerms(){
+  const all = await runPermFlow();
+  showTip(all ? "All set." : "Some permissions still needed — check App settings.");
+  if (all) { try { localStorage.setItem(PERMS_FLAG, "1"); } catch(e){} closePermGate(); }
 }
 
 /* ---------- speed test (hosted only — sandbox blocks network) ---------- */
@@ -624,6 +754,7 @@ let activeCarrier = "du";
 function setCarrier(c){
   activeCarrier = c;
   document.querySelectorAll("[data-carrier]").forEach(b => b.classList.toggle("on", b.dataset.carrier===c));
+  document.querySelectorAll("table.rf").forEach(t => t.dataset.active = c);
 }
 function showTip(msg){
   let t = document.getElementById("tip");
@@ -903,6 +1034,16 @@ document.addEventListener("click", e => {
   const sp = e.target.closest(".sptest");
   if (sp) onSpeedTest(sp);
 });
+
+/* ---------- permission gate on launch ---------- */
+document.getElementById("pgAllow").addEventListener("click", requestPerms);
+document.getElementById("pgSkip").addEventListener("click", closePermGate);
+(function maybeShowGate(){
+  let done = false;
+  try { done = localStorage.getItem(PERMS_FLAG) === "1"; } catch(e){}
+  const isApp = inNativeApp();
+  if (!done && (isApp || getCellSignal())) openPermGate();
+})();
 </script>
 </body>
 </html>
