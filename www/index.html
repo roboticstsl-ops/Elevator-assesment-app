@@ -171,7 +171,7 @@
     <div id="photos"></div>
   </section>
 
-  <div class="stamp">build v2026-09-07-o</div>
+  <div class="stamp">build v2026-09-07-p</div>
 </main>
 
 <iframe id="printFrame" style="position:fixed;width:0;height:0;border:0;left:-9999px"></iframe>
@@ -552,14 +552,27 @@ function shrink(file){
 }
 
 /* ---------- native cell signal (Android app only) ---------- */
-const CellSignal = (window.Capacitor && window.Capacitor.registerPlugin)
-  ? window.Capacitor.registerPlugin("CellSignal") : null;
+// Resolve lazily — the Capacitor bridge may not be ready when this file parses.
+function getCellSignal(){
+  const C = window.Capacitor;
+  if (!C) return null;
+  if (C.Plugins && C.Plugins.CellSignal) return C.Plugins.CellSignal;
+  if (typeof C.registerPlugin === "function") return C.registerPlugin("CellSignal");
+  return null;
+}
+function inNativeApp(){
+  const C = window.Capacitor;
+  return !!(C && (typeof C.isNativePlatform === "function" ? C.isNativePlatform() : C.isNative));
+}
 
 async function onSignalRead(btn){
   const [id, ri] = btn.dataset.sig.split(":");
   const q = col => document.querySelector(`[data-rf="${id}"][data-ri="${ri}"][data-col="${activeCarrier}.${col}"]`);
+  const CellSignal = getCellSignal();
   if (!CellSignal){
-    showTip("Signal read works only in the Android app (needs modem access).");
+    showTip(inNativeApp()
+      ? "Signal plugin not loaded — reinstall the latest APK."
+      : "Signal read only works in the installed Android app, not the browser.");
     return;
   }
   const orig = btn.textContent;
@@ -596,8 +609,9 @@ async function requestPerms(){
     await new Promise((res, rej) => navigator.geolocation.getCurrentPosition(res, rej, { timeout:8000 }));
     loc = "ok";
   } catch (e) { loc = "denied/off"; }
+  const CellSignal = getCellSignal();
   if (CellSignal){
-    try { await CellSignal.read(); sig = "ok"; }
+    try { await CellSignal.read({ carrier: activeCarrier }); sig = "ok"; }
     catch (e) { sig = (e && (e.message || e.errorMessage)) || "denied"; }
   }
   showTip(`Camera: ${cam} · Location: ${loc}` + (CellSignal ? ` · Signal: ${sig}` : ""));
