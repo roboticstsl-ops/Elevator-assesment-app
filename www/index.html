@@ -127,7 +127,7 @@
       <button type="button" data-carrier="du" class="on">DU</button>
       <button type="button" data-carrier="et">e&amp;</button>
     </div>
-    <p class="hint">Pick the SIM you're testing, then tap ⚡ on any row to auto-fill its DL / UL (and ping) for that carrier. RSRP / RSRQ / SINR / Band stay manual — no browser can read them. The speed test needs the hosted version; it won't run on the Claude preview link.</p>
+    <p class="hint">Pick the carrier, then per row: <b>📶</b> reads RSRP / RSRQ / SINR / Band from the phone's modem (Android app only — turn Location ON and allow Phone + Location the first time). <b>⚡</b> runs a real download / upload speed test and fills DL / UL. Values write into the selected carrier's columns.</p>
 
     <h3>3.1 RF Measurements (Charging Area + Building Lobby)</h3>
     <div id="rf1" class="rf-wrap"></div>
@@ -163,15 +163,15 @@
 
   <section class="card">
     <h2>5. Photos &amp; Attachments</h2>
-    <p class="hint">First time on a phone, tap “Allow camera &amp; storage” and accept the prompts so the camera works when adding photos.</p>
+    <p class="hint">First time on a phone: tap “Allow permissions”, accept Camera, Location and Phone. Location + Phone are needed for the 📶 signal read; Camera for photos.</p>
     <div style="display:flex;gap:8px;flex-wrap:wrap;margin-bottom:8px">
-      <button class="sm" onclick="requestPerms()">Allow camera &amp; storage</button>
+      <button class="sm" onclick="requestPerms()">Allow permissions</button>
       <button class="sm ghost" onclick="addPhoto()">+ Add photo / attachment</button>
     </div>
     <div id="photos"></div>
   </section>
 
-  <div class="stamp">build v2026-09-07-m</div>
+  <div class="stamp">build v2026-09-07-n</div>
 </main>
 
 <iframe id="printFrame" style="position:fixed;width:0;height:0;border:0;left:-9999px"></iframe>
@@ -484,9 +484,10 @@ function rfTable(id, rows, editableLoc){
   </thead>`;
   const body = rows.map((label,ri) => {
     const spBtn = `<button type="button" class="sptest" data-sp="${id}:${ri}" title="Run speed test for this row">⚡</button>`;
+    const sigBtn = `<button type="button" class="sptest sigread" data-sig="${id}:${ri}" title="Read RSRP / RSRQ / SINR / Band from the phone (Android app only)">📶</button>`;
     const locCell = editableLoc
-      ? `<td class="loc"><input type="text" data-rf="${id}" data-ri="${ri}" data-col="loc" value="${esc(label)}">${spBtn}</td>`
-      : `<td class="loc">${esc(label)} ${spBtn}<input type="hidden" data-rf="${id}" data-ri="${ri}" data-col="loc" value="${esc(label)}"></td>`;
+      ? `<td class="loc"><input type="text" data-rf="${id}" data-ri="${ri}" data-col="loc" value="${esc(label)}">${sigBtn}${spBtn}</td>`
+      : `<td class="loc">${esc(label)} ${sigBtn}${spBtn}<input type="hidden" data-rf="${id}" data-ri="${ri}" data-col="loc" value="${esc(label)}"></td>`;
     const cells = ["du","et"].map(car => METRICS.map(m =>
       `<td><input type="text" data-rf="${id}" data-ri="${ri}" data-col="${car}.${m}"></td>`).join("")).join("");
     return `<tr>${locCell}${cells}</tr>`;
@@ -500,9 +501,6 @@ function buildFloorTables(){
   const labels = [floorLabel(0)]; for (let i=1;i<=n;i++) labels.push(floorLabel(i));
   $("#rf2").innerHTML = rfTable("rf2", labels, false);
   $("#rf3").innerHTML = rfTable("rf3", labels, false);
-  // default bands
-  document.querySelectorAll('[data-rf="rf2"][data-col="du.band"],[data-rf="rf3"][data-col="du.band"]').forEach(el=>el.value="B3");
-  document.querySelectorAll('[data-rf="rf2"][data-col="et.band"],[data-rf="rf3"][data-col="et.band"]').forEach(el=>el.value="B8");
   wireInputs();
   restore(prev, { rfOnly:true });   // put back any previously typed floor values by row order
   save();
@@ -553,18 +551,54 @@ function shrink(file){
   });
 }
 
+/* ---------- native cell signal (Android app only) ---------- */
+const CellSignal = (window.Capacitor && window.Capacitor.registerPlugin)
+  ? window.Capacitor.registerPlugin("CellSignal") : null;
+
+async function onSignalRead(btn){
+  const [id, ri] = btn.dataset.sig.split(":");
+  const q = col => document.querySelector(`[data-rf="${id}"][data-ri="${ri}"][data-col="${activeCarrier}.${col}"]`);
+  if (!CellSignal){
+    showTip("Signal read works only in the Android app (needs modem access).");
+    return;
+  }
+  const orig = btn.textContent;
+  btn.disabled = true; btn.textContent = "…";
+  try {
+    const r = await CellSignal.read();          // { tech, rsrp, rsrq, sinr?, band? }
+    const set = (col, val) => {
+      if (val === undefined || val === null || val === "") return;
+      const el = q(col); if (!el) return;
+      el.value = val; el.dispatchEvent(new Event("input", { bubbles:true }));
+    };
+    set("rsrp", r.rsrp); set("rsrq", r.rsrq); set("sinr", r.sinr); set("band", r.band);
+    showTip(`${activeCarrier.toUpperCase()} ${r.tech||""} · RSRP ${r.rsrp} RSRQ ${r.rsrq}` +
+      (r.sinr!=null ? ` SINR ${r.sinr}` : "") + (r.band ? ` ${r.band}` : ""));
+  } catch (err) {
+    const m = (err && (err.message || err.errorMessage)) || "unknown";
+    showTip("Signal read failed: " + m + ". Turn Location ON and allow Phone + Location.");
+  } finally {
+    btn.disabled = false; btn.textContent = orig;
+  }
+}
+
 /* ---------- permissions ---------- */
 async function requestPerms(){
-  let cam = "n/a";
+  let cam = "n/a", loc = "n/a", sig = "n/a";
   try {
     const st = await navigator.mediaDevices.getUserMedia({ video:true });
     st.getTracks().forEach(t => t.stop());
-    cam = "granted";
-  } catch (e) { cam = e && e.name ? e.name : "denied"; }
+    cam = "ok";
+  } catch (e) { cam = (e && e.name) || "denied"; }
   try {
-    if (navigator.permissions){ await navigator.permissions.query({ name:"geolocation" }); }
-  } catch (e) {}
-  showTip("Camera: " + cam + ". If denied, enable it in the app's system settings.");
+    await new Promise((res, rej) => navigator.geolocation.getCurrentPosition(res, rej, { timeout:8000 }));
+    loc = "ok";
+  } catch (e) { loc = "denied/off"; }
+  if (CellSignal){
+    try { await CellSignal.read(); sig = "ok"; }
+    catch (e) { sig = (e && (e.message || e.errorMessage)) || "denied"; }
+  }
+  showTip(`Camera: ${cam} · Location: ${loc}` + (CellSignal ? ` · Signal: ${sig}` : ""));
 }
 
 /* ---------- speed test (hosted only — sandbox blocks network) ---------- */
@@ -845,7 +879,12 @@ buildFloorTables();
 if (saved) restore(saved);
 wireInputs();
 document.querySelectorAll("[data-carrier]").forEach(b => b.addEventListener("click", () => { setCarrier(b.dataset.carrier); save(); }));
-document.addEventListener("click", e => { const b = e.target.closest(".sptest"); if (b) onSpeedTest(b); });
+document.addEventListener("click", e => {
+  const sig = e.target.closest(".sigread");
+  if (sig){ onSignalRead(sig); return; }
+  const sp = e.target.closest(".sptest");
+  if (sp) onSpeedTest(sp);
+});
 </script>
 </body>
 </html>

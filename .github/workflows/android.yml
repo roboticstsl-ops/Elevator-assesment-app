@@ -26,8 +26,8 @@ jobs:
       - name: Add Android platform
         run: npx cap add android
 
-      - name: Inject runtime permissions
-        run: node scripts/patch-manifest.js
+      - name: Patch Android project
+        run: node scripts/patch-android.js
 
       - name: Sync web assets
         run: npx cap sync android
