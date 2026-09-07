@@ -73,24 +73,31 @@
   button.block { display:block; width:100%; padding:14px; font-size:15px; font-weight:700;
     background:var(--accent); border-color:var(--accent); }
 
-  /* RF tables — one carrier at a time so they fit the screen */
+  /* RF tables — transposed: metrics down the left, locations across the top */
   .rf-wrap { overflow-x:auto; -webkit-overflow-scrolling:touch;
-    border:1px solid var(--bd-soft); border-radius:var(--r-sm); }
-  table.rf { border-collapse:collapse; width:100%; font-size:12px; }
-  table.rf th, table.rf td { border:1px solid var(--bd-soft); padding:3px; text-align:center; }
-  table.rf th { background:#f1f3f7; font-size:10px; font-weight:700; letter-spacing:.2px;
-    text-transform:uppercase; color:var(--muted); }
-  table.rf td input { width:100%; min-width:44px; padding:7px 3px; border:1px solid var(--bd);
-    border-radius:6px; text-align:center; font-size:12px; }
-  table.rf td.loc { text-align:left; white-space:nowrap; font-weight:700; font-size:12px;
-    padding:6px 8px; background:#fafbfc; position:sticky; left:0; z-index:1; }
-  table.rf td.loc .locwrap { display:flex; align-items:center; gap:4px; }
-  table.rf td.loc input { width:96px; text-align:left; }
-  table.rf col.c-metric { width:12%; }
-  table.rf col.c-loc { width:28%; }
-  table.rf .car-du, table.rf .car-et { display:none; }
-  table.rf[data-active="du"] .car-du { display:table-cell; }
-  table.rf[data-active="et"] .car-et { display:table-cell; }
+    border:1px solid var(--bd-soft); border-radius:var(--r-sm); background:#fff; }
+  table.rft { border-collapse:separate; border-spacing:0; font-size:12px; }
+  table.rft th, table.rft td { border-right:1px solid var(--bd-soft); border-bottom:1px solid var(--bd-soft); padding:0; }
+  table.rft thead th { background:#f1f3f7; vertical-align:bottom; }
+  table.rft th.corner { position:sticky; left:0; top:0; z-index:5; background:#eef1f6;
+    font-size:10px; font-weight:700; text-transform:uppercase; letter-spacing:.3px; color:var(--muted);
+    padding:6px 8px; text-align:left; min-width:56px; }
+  table.rft th.loc { min-width:46px; padding:8px 3px 5px; }
+  table.rft th.loc .vlabel { writing-mode:vertical-rl; text-orientation:mixed; white-space:nowrap;
+    font-size:11px; font-weight:650; color:var(--ink); text-transform:none; letter-spacing:0;
+    margin:0 auto 5px; max-height:118px; }
+  table.rft th.loc .colbtns { display:flex; gap:3px; justify-content:center; margin-bottom:4px; }
+  table.rft th.loc .colbtns .sptest { padding:3px 4px; font-size:11px; }
+  table.rft th.loc .locin { width:42px; font-size:10px; padding:3px; border:1px solid var(--bd);
+    border-radius:4px; text-align:center; }
+  table.rft th.metric { position:sticky; left:0; z-index:3; background:#f7f8fa;
+    font-size:10px; font-weight:700; text-transform:uppercase; letter-spacing:.2px; color:var(--muted);
+    text-align:left; padding:6px 8px; min-width:56px; white-space:nowrap; }
+  table.rft tbody td { text-align:center; }
+  table.rft tbody td input { width:100%; min-width:46px; padding:9px 3px; border:0; border-radius:0;
+    text-align:center; font-size:12.5px; background:#fff; }
+  table.rft tbody td input:focus { outline:2px solid var(--accent); outline-offset:-2px; }
+  table.rft tbody tr:nth-child(even) td input { background:#fafbfc; }
 
   .rail { border:1px solid var(--bd-soft); border-radius:var(--r-sm); padding:12px; margin-bottom:12px; background:#fcfcfd; }
   .rail h3 { margin-top:0; }
@@ -275,13 +282,13 @@
     <button class="block" onclick="doPrint()">📄 Generate PDF report</button>
   </section>
 
-  <div class="stamp">build v2026-09-07-r</div>
+  <div class="stamp">build v2026-09-07-s</div>
 </main>
 
 <iframe id="printFrame" style="position:fixed;width:0;height:0;border:0;left:-9999px"></iframe>
 
 <script>
-const LS_KEY = "svs_draft_v2";
+const LS_KEY = "svs_draft_v3";
 const METRICS = ["rsrp","rsrq","sinr","band","dl","ul"];
 const METRIC_LBL = { rsrp:"RSRP (dBm)", rsrq:"RSRQ (dB)", sinr:"SINR (dB)", band:"Band", dl:"DL (Mbps)", ul:"UL (Mbps)" };
 const CHECKLIST = [
@@ -581,39 +588,45 @@ function buildPinout(){
       <td><input type="text" data-pin-use="${i}" style="width:100%;text-align:left"></td>
       <td><input type="text" data-pin-color="${i}" value="${c}" style="width:100%"></td></tr>`).join("");
 }
-function rfTable(id, rows, editableLoc){
-  const cols = `<colgroup><col class="c-loc">` +
-    METRICS.map(() => `<col class="c-metric car-du">`).join("") +
-    METRICS.map(() => `<col class="c-metric car-et">`).join("") + `</colgroup>`;
-  const head = `<thead><tr><th class="loc">Location</th>` +
-      METRICS.map(m => `<th class="car-du">${METRIC_LBL[m]}</th>`).join("") +
-      METRICS.map(m => `<th class="car-et">${METRIC_LBL[m]}</th>`).join("") +
-    `</tr></thead>`;
-  const body = rows.map((label,ri) => {
-    const spBtn = `<button type="button" class="sptest" data-sp="${id}:${ri}" title="Speed test this row">⚡</button>`;
-    const sigBtn = `<button type="button" class="sptest sigread" data-sig="${id}:${ri}" title="Read signal from the phone (Android app)">📶</button>`;
-    const locInner = editableLoc
-      ? `<input type="text" data-rf="${id}" data-ri="${ri}" data-col="loc" value="${esc(label)}">`
-      : `<span>${esc(label)}</span><input type="hidden" data-rf="${id}" data-ri="${ri}" data-col="loc" value="${esc(label)}">`;
-    const locCell = `<td class="loc"><div class="locwrap">${locInner}${sigBtn}${spBtn}</div></td>`;
-    const cells = ["du","et"].map(car => METRICS.map(m =>
-      `<td class="car-${car}"><input type="text" inputmode="numeric" data-rf="${id}" data-ri="${ri}" data-col="${car}.${m}"></td>`
-    ).join("")).join("");
-    return `<tr>${locCell}${cells}</tr>`;
-  }).join("");
-  return `<table class="rf" data-active="${activeCarrier}">${cols}${head}<tbody>${body}</tbody></table>`;
+/* RF values live in this model so switching carrier never loses data.
+   rfModel[id]["<ri>|<col>"] = value   (col = "du.rsrp" | "et.band" | "loc") */
+let rfModel = { rf1:{}, rf2:{}, rf3:{} };
+const RF_CORNER = { rf1:"3.1 Charging + Lobby", rf2:"3.2 On cabin", rf3:"3.3 In cabin" };
+
+function floorCountVal(){ return Math.max(0, Math.min(120, parseInt($("#floorCount").value, 10) || 0)); }
+function rfLabels(id, n){
+  if (id === "rf1") return RF1_LOCS.slice();
+  const cnt = (n == null) ? floorCountVal() : n;
+  const out = [floorLabel(0)];
+  for (let i = 1; i <= cnt; i++) out.push(floorLabel(i));
+  return out;
 }
-function buildRf1(){ $("#rf1").innerHTML = rfTable("rf1", RF1_LOCS, true); wireInputs(); }
-function buildFloorTables(){
-  const n = Math.max(0, Math.min(120, parseInt($("#floorCount").value,10) || 0));
-  const prev = collect();
-  const labels = [floorLabel(0)]; for (let i=1;i<=n;i++) labels.push(floorLabel(i));
-  $("#rf2").innerHTML = rfTable("rf2", labels, false);
-  $("#rf3").innerHTML = rfTable("rf3", labels, false);
-  wireInputs();
-  restore(prev, { rfOnly:true });   // put back any previously typed floor values by row order
-  save();
+function rfVal(id, ci, col){ return (rfModel[id] || {})[ci + "|" + col] || ""; }
+
+function rfTable(id, labels){
+  const colHead = labels.map((lab, ci) => `
+    <th class="loc" title="${esc(lab)}">
+      <div class="colbtns">
+        <button type="button" class="sptest sigread" data-sig="${id}:${ci}" title="Read signal (Android app)">📶</button>
+        <button type="button" class="sptest" data-sp="${id}:${ci}" title="Speed test">⚡</button>
+      </div>
+      <div class="vlabel">${esc(lab)}</div>
+    </th>`).join("");
+  const rowsHtml = METRICS.map(m => `
+    <tr>
+      <th class="metric">${METRIC_LBL[m]}</th>
+      ${labels.map((_, ci) => `
+        <td><input inputmode="numeric" data-rf="${id}" data-ri="${ci}" data-col="${activeCarrier}.${m}"
+             value="${esc(rfVal(id, ci, activeCarrier + "." + m))}"></td>`).join("")}
+    </tr>`).join("");
+  return `<table class="rft" data-active="${activeCarrier}">
+    <thead><tr><th class="corner">${RF_CORNER[id] || ""}</th>${colHead}</tr></thead>
+    <tbody>${rowsHtml}</tbody></table>`;
 }
+function renderRf(id){ document.getElementById(id).innerHTML = rfTable(id, rfLabels(id)); }
+function renderAllRf(){ ["rf1","rf2","rf3"].forEach(renderRf); }
+function buildRf1(){ renderRf("rf1"); }
+function buildFloorTables(){ renderRf("rf2"); renderRf("rf3"); save(); }
 
 /* ---------- photos ---------- */
 function addPhoto(data){
@@ -754,7 +767,7 @@ let activeCarrier = "du";
 function setCarrier(c){
   activeCarrier = c;
   document.querySelectorAll("[data-carrier]").forEach(b => b.classList.toggle("on", b.dataset.carrier===c));
-  document.querySelectorAll("table.rf").forEach(t => t.dataset.active = c);
+  if (document.getElementById("rf1")) renderAllRf();
 }
 function showTip(msg){
   let t = document.getElementById("tip");
@@ -837,7 +850,7 @@ async function onSpeedTest(btn){
 
 /* ---------- state collect / restore ---------- */
 function collect(){
-  const s = { fields:{}, checklist:{}, rails:{}, pinout:[], rf:{}, photos:[], floorCount:$("#floorCount").value, carrier:activeCarrier };
+  const s = { fields:{}, checklist:{}, rails:{}, pinout:[], rf:{ rf1:{}, rf2:{}, rf3:{} }, photos:[], floorCount:$("#floorCount").value, carrier:activeCarrier };
   document.querySelectorAll("[data-f]").forEach(el => s.fields[el.dataset.f] = el.value);
   document.querySelectorAll("[data-chk]").forEach(el => s.checklist[el.dataset.chk] = el.value);
   document.querySelectorAll("[data-rail]").forEach(r => {
@@ -849,10 +862,7 @@ function collect(){
     (s.pinout[+el.dataset.pinUse] = s.pinout[+el.dataset.pinUse] || {}).use = el.value; });
   document.querySelectorAll("[data-pin-color]").forEach(el => {
     (s.pinout[+el.dataset.pinColor] = s.pinout[+el.dataset.pinColor] || {}).color = el.value; });
-  document.querySelectorAll("[data-rf]").forEach(el => {
-    const k = el.dataset.rf + "|" + el.dataset.ri + "|" + el.dataset.col;
-    s.rf[k] = el.value;
-  });
+  s.rf = JSON.parse(JSON.stringify(rfModel));
   document.querySelectorAll("#photos .photo-item").forEach(p => s.photos.push({
     desc: p.querySelector('[data-photo="desc"]').value,
     filename: p.querySelector('[data-photo="filename"]').value,
@@ -878,11 +888,10 @@ function restore(s, opts={}){
       const c=document.querySelector(`[data-pin-color="${i}"]`); if (c) c.value=o.color||""; });
     (s.photos||[]).forEach(p => addPhoto(p));
   }
-  Object.entries(s.rf||{}).forEach(([k,v]) => {
-    const [rf,ri,col] = k.split("|");
-    const el = document.querySelector(`[data-rf="${rf}"][data-ri="${ri}"][data-col="${col}"]`);
-    if (el && el.dataset.col !== "loc") el.value = v;
-  });
+  if (s.rf && (s.rf.rf1 || s.rf.rf2 || s.rf.rf3)){
+    rfModel = { rf1:{...(s.rf.rf1||{})}, rf2:{...(s.rf.rf2||{})}, rf3:{...(s.rf.rf3||{})} };
+  }
+  if (!opts.noRender && document.getElementById("rf1")) renderAllRf();
 }
 
 /* ---------- persistence ---------- */
@@ -924,11 +933,19 @@ function rfPrintTable(rows){
   return `<table class="rf">${h}${b}</table>`;
 }
 function rowsFromState(s, id){
-  const map = {};
-  Object.entries(s.rf).forEach(([k,v]) => { const [rf,ri,col]=k.split("|"); if (rf!==id) return;
-    (map[ri] = map[ri] || {du:{},et:{}});
-    if (col==="loc") map[ri].loc=v; else { const [c,m]=col.split("."); map[ri][c][m]=v; } });
-  return Object.keys(map).sort((a,b)=>a-b).map(i => map[i]);
+  const m = (s.rf && s.rf[id]) || {};
+  const n = parseInt(s.floorCount, 10) || 25;
+  const labels = (id === "rf1")
+    ? RF1_LOCS.map((d, ci) => m[ci + "|loc"] || d)
+    : rfLabels(id, n);
+  return labels.map((loc, ci) => {
+    const g = { loc, du:{}, et:{} };
+    METRICS.forEach(k => {
+      const du = m[ci + "|du." + k]; if (du) g.du[k] = du;
+      const et = m[ci + "|et." + k]; if (et) g.et[k] = et;
+    });
+    return g;
+  }).filter(g => g.loc || METRICS.some(k => g.du[k] || g.et[k]));
 }
 function buildPrintDoc(s){
   const F = s.fields;
@@ -1020,13 +1037,20 @@ function buildPrintDoc(s){
 buildChecklist();
 buildRails();
 buildPinout();
-buildRf1();
 let saved = null;
 try { saved = JSON.parse(localStorage.getItem(LS_KEY) || "null"); } catch(e){}
 $("#floorCount").value = (saved && saved.floorCount) || "25";
-buildFloorTables();
-if (saved) restore(saved);
+if (saved) { restore(saved); } else { renderAllRf(); }
 wireInputs();
+
+// RF cells write straight into the model, so switching carrier keeps both sets
+document.addEventListener("input", e => {
+  const el = e.target.closest("[data-rf]");
+  if (!el) return;
+  const id = el.dataset.rf;
+  (rfModel[id] = rfModel[id] || {})[el.dataset.ri + "|" + el.dataset.col] = el.value;
+  save();
+});
 document.querySelectorAll("[data-carrier]").forEach(b => b.addEventListener("click", () => { setCarrier(b.dataset.carrier); save(); }));
 document.addEventListener("click", e => {
   const sig = e.target.closest(".sigread");
