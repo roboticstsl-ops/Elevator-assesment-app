@@ -279,15 +279,18 @@
 
   <section class="card">
     <h2>Finish</h2>
-    <p class="hint">Builds a printable report from everything above. On the print dialog choose “Save as PDF”.</p>
-    <button class="block" onclick="doPrint()">📄 Generate PDF report</button>
+    <p class="hint"><b>Word (.docx)</b> fills the official Site Visit Sheet template — open it in Docs/Word to review or export a PDF. <b>Quick PDF</b> prints straight from the app.</p>
+    <button class="block" onclick="exportDocx()">📝 Export Word (.docx)</button>
+    <button class="sm ghost" style="width:100%;margin-top:8px" onclick="doPrint()">📄 Quick PDF</button>
   </section>
 
-  <div class="stamp">v0.1.2</div>
+  <div class="stamp">v0.1.3</div>
 </main>
 
 <iframe id="printFrame" style="position:fixed;width:0;height:0;border:0;left:-9999px"></iframe>
 
+<script src="vendor/pizzip.js"></script>
+<script src="vendor/docxtemplater.js"></script>
 <script>
 const LS_KEY = "svs_draft_v3";
 const METRICS = ["rsrp","rsrq","sinr","band","dl","ul"];
@@ -938,6 +941,79 @@ async function doPrint(){
     catch (e) { showTip("Use the browser menu → Print / Save as PDF."); }
   };
 }
+/* ---------- Word (.docx) export from the standard template ---------- */
+function bytesToB64(u8){
+  let s = "";
+  const chunk = 0x8000;
+  for (let i = 0; i < u8.length; i += chunk) s += String.fromCharCode.apply(null, u8.subarray(i, i + chunk));
+  return btoa(s);
+}
+function docxData(s){
+  const F = s.fields, d = {};
+  ["doc_ref","prepared_by","date","version","project","site_name","client","address","maps_link",
+   "elev_oem","elev_model","elev_id","elev_maint","plug_points","checklist_note",
+   "networks","survey_point","feasibility","btn_sku","btn_connectors","rail_note"
+  ].forEach(k => d[k] = F[k] || "");
+  for (let i = 0; i < 13; i++) d["chk_" + i] = s.checklist[i] || "";
+
+  const railMap = { top:["A","B","C","D","E","F","G"], rear:["A","B","C","D","E"],
+                    left:["A","B","C","D","E"], right:["A","B","C","D","E"] };
+  Object.entries(railMap).forEach(([key, letters]) => {
+    const dims = (s.rails[key] && (s.rails[key].dims || s.rails[key])) || {};
+    letters.forEach(L => d["r_" + key + "_" + L] = dims[L] || "");
+  });
+
+  const mkRows = id => rowsFromState(s, id).map(g => ({
+    loc: g.loc || "",
+    du_rsrp: g.du.rsrp || "", du_rsrq: g.du.rsrq || "", du_sinr: g.du.sinr || "",
+    du_band: g.du.band || "", du_dl: g.du.dl || "", du_ul: g.du.ul || "",
+    et_rsrp: g.et.rsrp || "", et_rsrq: g.et.rsrq || "", et_sinr: g.et.sinr || "",
+    et_band: g.et.band || "", et_dl: g.et.dl || "", et_ul: g.et.ul || "",
+  }));
+  d.rf1 = mkRows("rf1"); d.rf2 = mkRows("rf2"); d.rf3 = mkRows("rf3");
+
+  (s.pinout || []).slice(0, 4).forEach((o, i) => {
+    d["pin" + (i + 1) + "_use"] = (o && o.use) || "";
+    d["pin" + (i + 1) + "_color"] = (o && o.color) || "";
+  });
+  d.photos = (s.photos || []).map(p => ({ p_desc: p.desc || "", p_file: p.filename || "" }));
+  return d;
+}
+async function exportDocx(){
+  if (!window.PizZip || !window.docxtemplater){
+    showTip("Word export runs in the installed app / hosted page, not the preview link.");
+    return;
+  }
+  let buf;
+  try { buf = await (await fetch("template.docx")).arrayBuffer(); }
+  catch (e) { showTip("Template not found — use the installed app."); return; }
+  let out;
+  try {
+    const doc = new window.docxtemplater(new PizZip(buf), { paragraphLoop:true, linebreaks:true });
+    doc.render(docxData(collect()));
+    out = doc.getZip().generate({ type:"uint8array" });
+  } catch (e) {
+    const msg = (e && e.properties && e.properties.errors)
+      ? e.properties.errors.map(x => x.properties && x.properties.explanation).join("; ")
+      : (e && e.message) || "unknown";
+    showTip("Fill failed: " + msg);
+    return;
+  }
+  const site = (collect().fields.site_name || "Site_Visit_Sheet").replace(/[^\w-]+/g, "_");
+  const name = site + ".docx";
+  const mime = "application/vnd.openxmlformats-officedocument.wordprocessingml.document";
+  const NF = nativePlugin("NativeFile");
+  if (NF){
+    try { await NF.saveOpen({ base64: bytesToB64(out), name, mime }); }
+    catch (e) { showTip("Save failed: " + ((e && (e.message || e.errorMessage)) || "unknown")); }
+    return;
+  }
+  const url = URL.createObjectURL(new Blob([out], { type: mime }));
+  const a = document.createElement("a");
+  a.href = url; a.download = name; document.body.appendChild(a); a.click();
+  setTimeout(() => { a.remove(); URL.revokeObjectURL(url); }, 1000);
+}
+
 function rfPrintTable(rows){
   if (!rows.length) return "<p><em>No data.</em></p>";
   const h = `<tr><th rowspan="2">Location</th><th colspan="6">Carrier #1 - DU</th><th colspan="6">Carrier #2 - ETISALAT</th></tr>

@@ -37,7 +37,7 @@ if (!xml.includes('android:name="android.hardware.camera"')) {
 fs.writeFileSync(manifestPath, xml);
 
 /* 2. native plugins --------------------------------------------------------- */
-const plugins = ["CellSignalPlugin", "NativePrintPlugin"];
+const plugins = ["CellSignalPlugin", "NativePrintPlugin", "NativeFilePlugin"];
 for (const p of plugins) {
   fs.copyFileSync(`android-src/${p}.java`, path.join(javaDir, `${p}.java`));
 }
@@ -56,6 +56,20 @@ ${plugins.map(p => `        registerPlugin(${p}.class);`).join("\n")}
     }
 }
 `);
+
+/* 3b. FileProvider paths (for opening the exported .docx) ----------------- */
+const fpPath = "android/app/src/main/res/xml/file_paths.xml";
+if (fs.existsSync(fpPath)) {
+  fs.writeFileSync(fpPath, `<?xml version="1.0" encoding="utf-8"?>
+<paths>
+    <cache-path name="cache" path="." />
+    <external-cache-path name="external_cache" path="." />
+    <external-files-path name="external_files" path="." />
+    <external-path name="external" path="." />
+    <files-path name="files" path="." />
+</paths>
+`);
+}
 
 /* 4. version name / code -------------------------------------------------- */
 const version = fs.readFileSync("VERSION", "utf8").trim();       // e.g. 0.1.1
