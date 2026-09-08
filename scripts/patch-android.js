@@ -36,10 +36,13 @@ if (!xml.includes('android:name="android.hardware.camera"')) {
 }
 fs.writeFileSync(manifestPath, xml);
 
-/* 2. native plugin ------------------------------------------------------------ */
-fs.copyFileSync("android-src/CellSignalPlugin.java", path.join(javaDir, "CellSignalPlugin.java"));
+/* 2. native plugins --------------------------------------------------------- */
+const plugins = ["CellSignalPlugin", "NativePrintPlugin"];
+for (const p of plugins) {
+  fs.copyFileSync(`android-src/${p}.java`, path.join(javaDir, `${p}.java`));
+}
 
-/* 3. MainActivity ----------------------------------------------------------- */
+/* 3. MainActivity --------------------------------------------------------- */
 fs.writeFileSync(path.join(javaDir, "MainActivity.java"), `package ${pkg};
 
 import android.os.Bundle;
@@ -48,10 +51,10 @@ import com.getcapacitor.BridgeActivity;
 public class MainActivity extends BridgeActivity {
     @Override
     public void onCreate(Bundle savedInstanceState) {
-        registerPlugin(CellSignalPlugin.class);
+${plugins.map(p => `        registerPlugin(${p}.class);`).join("\n")}
         super.onCreate(savedInstanceState);
     }
 }
 `);
 
-console.log("patched: permissions + CellSignalPlugin + MainActivity");
+console.log("patched: permissions + " + plugins.join(", ") + " + MainActivity");

@@ -282,7 +282,7 @@
     <button class="block" onclick="doPrint()">📄 Generate PDF report</button>
   </section>
 
-  <div class="stamp">build v2026-09-07-s</div>
+  <div class="stamp">build v2026-09-08-t</div>
 </main>
 
 <iframe id="printFrame" style="position:fixed;width:0;height:0;border:0;left:-9999px"></iframe>
@@ -918,11 +918,24 @@ function startFresh(){
 function refreshKeep(){ save(); setTimeout(() => location.reload(), 200); }
 
 /* ---------- print / PDF ---------- */
-function doPrint(){
-  const s = collect();
+function nativePlugin(name){
+  const C = window.Capacitor;
+  return (C && C.Plugins && C.Plugins[name]) ? C.Plugins[name] : null;
+}
+async function doPrint(){
+  const html = buildPrintDoc(collect());
+  const NP = nativePlugin("NativePrint");
+  if (NP){
+    try { await NP.printHtml({ html, jobName: "Elevator RF Survey Report" }); }
+    catch (e) { showTip("Print failed: " + ((e && (e.message || e.errorMessage)) || "unknown")); }
+    return;
+  }
   const f = $("#printFrame");
-  f.srcdoc = buildPrintDoc(s);
-  f.onload = () => { f.contentWindow.focus(); f.contentWindow.print(); };
+  f.srcdoc = html;
+  f.onload = () => {
+    try { f.contentWindow.focus(); f.contentWindow.print(); }
+    catch (e) { showTip("Use the browser menu → Print / Save as PDF."); }
+  };
 }
 function rfPrintTable(rows){
   if (!rows.length) return "<p><em>No rows.</em></p>";
