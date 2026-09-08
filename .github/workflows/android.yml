@@ -35,14 +35,12 @@ jobs:
       - name: Build debug APK
         run: cd android && chmod +x gradlew && ./gradlew assembleDebug --no-daemon
 
-      - name: Name APK by build label
-        id: ver
+      - name: Name APK by version
         run: |
-          V=$(grep -oE 'build v[0-9]{4}-[0-9]{2}-[0-9]{2}-[a-z]' www/index.html | head -1 | sed 's/build v//')
+          V=$(cat VERSION | tr -d '[:space:]')
           [ -z "$V" ] && V="dev"
           mkdir -p out
           cp android/app/build/outputs/apk/debug/app-debug.apk "out/app-${V}.apk"
-          echo "name=app-${V}.apk" >> "$GITHUB_OUTPUT"
 
       - name: Upload APK
         uses: actions/upload-artifact@v4

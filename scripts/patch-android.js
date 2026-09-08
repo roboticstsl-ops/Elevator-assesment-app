@@ -57,4 +57,14 @@ ${plugins.map(p => `        registerPlugin(${p}.class);`).join("\n")}
 }
 `);
 
-console.log("patched: permissions + " + plugins.join(", ") + " + MainActivity");
+/* 4. version name / code -------------------------------------------------- */
+const version = fs.readFileSync("VERSION", "utf8").trim();       // e.g. 0.1.1
+const code = parseInt(process.env.GITHUB_RUN_NUMBER || "1", 10);
+const gradlePath = "android/app/build.gradle";
+let gradle = fs.readFileSync(gradlePath, "utf8");
+gradle = gradle
+  .replace(/versionName\s+"[^"]*"/, `versionName "${version}"`)
+  .replace(/versionCode\s+\d+/, `versionCode ${code}`);
+fs.writeFileSync(gradlePath, gradle);
+
+console.log(`patched: permissions + ${plugins.join(", ")} + MainActivity + version ${version} (code ${code})`);
