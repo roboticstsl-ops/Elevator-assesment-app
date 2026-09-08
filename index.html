@@ -224,7 +224,8 @@
     <h2>3. Technical Findings — LTE / RF Survey</h2>
     <div class="grid2">
       <div><label>Network(s) Tested</label><input type="text" data-f="networks" value="du, e&"></div>
-      <div><label>App / Survey Point</label><input type="text" data-f="survey_point"></div>
+      <div><label>App</label><input type="text" data-f="app_used"></div>
+      <div><label>Survey Point</label><input type="text" data-f="survey_point"></div>
       <div><label>Overall Feasibility</label><input type="text" data-f="feasibility"></div>
     </div>
 
@@ -282,7 +283,7 @@
     <button class="block" onclick="doPrint()">📄 Generate PDF report</button>
   </section>
 
-  <div class="stamp">v0.1.1</div>
+  <div class="stamp">v0.1.2</div>
 </main>
 
 <iframe id="printFrame" style="position:fixed;width:0;height:0;border:0;left:-9999px"></iframe>
@@ -938,10 +939,10 @@ async function doPrint(){
   };
 }
 function rfPrintTable(rows){
-  if (!rows.length) return "<p><em>No rows.</em></p>";
-  const h = `<tr><th rowspan="2">Location</th><th colspan="6">Carrier #1 — DU</th><th colspan="6">Carrier #2 — ETISALAT</th></tr>
+  if (!rows.length) return "<p><em>No data.</em></p>";
+  const h = `<tr><th rowspan="2">Location</th><th colspan="6">Carrier #1 - DU</th><th colspan="6">Carrier #2 - ETISALAT</th></tr>
     <tr>${METRICS.map(m=>`<th>${METRIC_LBL[m]}</th>`).join("")}${METRICS.map(m=>`<th>${METRIC_LBL[m]}</th>`).join("")}</tr>`;
-  const b = rows.map(r => `<tr><td class="l">${esc(r.loc)}</td>${
+  const b = rows.map(r => `<tr><td class="loc">${esc(r.loc)}</td>${
     ["du","et"].map(c => METRICS.map(m => `<td>${esc(r[c][m]||"")}</td>`).join("")).join("")}</tr>`).join("");
   return `<table class="rf">${h}${b}</table>`;
 }
@@ -962,87 +963,150 @@ function rowsFromState(s, id){
 }
 function buildPrintDoc(s){
   const F = s.fields;
-  const chk = CHECKLIST.map((t,i) => `<tr><td>${esc(t)}</td><td class="c">${esc(s.checklist[i]||"")}</td></tr>`).join("");
+  const v = k => esc(F[k] || "");
+
+  // 1.1 checklist — blank separator row after item 7, like the source sheet
+  const chk = CHECKLIST.map((t,i) =>
+    (i === 7 ? `<tr class="sep"><td colspan="2">&nbsp;</td></tr>` : "") +
+    `<tr><td>${esc(t)}</td><td class="c">${esc(s.checklist[i] || "")}</td></tr>`
+  ).join("");
+
   const railBlock = RAILS.map(r => {
     const d = s.rails[r.key] || {};
     const dims = d.dims || d;
-    const line = r.letters.map(L => `${L}: ${esc(dims[L]||"—")}mm`).join("&nbsp;&nbsp; ");
-    return `<div class="rail"><h4>${r.name}</h4>${railPrintSvg(d.draw||[])}<p class="dims"><strong>Measurements:</strong> ${line}</p></div>`;
+    const line = r.letters
+      .map(L => (dims[L] ? `${L}: ${esc(dims[L])}mm` : null))
+      .filter(Boolean).join("&nbsp;&nbsp;&nbsp;&nbsp; ");
+    return `<div class="rail">
+      <div class="railname">${r.name}</div>
+      <div class="wall">Wall</div>
+      ${railPrintSvg(d.draw || [])}
+      <p class="dims"><b>Measurements:</b>&nbsp;&nbsp;&nbsp;&nbsp; ${line || "—"}</p>
+    </div>`;
   }).join("");
-  const pin = (s.pinout||[]).map((o,i) => `<tr><td class="c">${i+1}</td><td>${esc(o.use||"")}</td><td>${esc(o.color||"")}</td></tr>`).join("");
-  const photos = (s.photos||[]).map(p => `<div class="ph">
-    <table class="kv"><tr><td>Photo / Attachment Description</td><td>${esc(p.desc)}</td></tr>
-    <tr><td>Filename / Link</td><td>${esc(p.filename)}</td></tr></table>
-    ${p.img ? `<img src="${p.img}">` : ""}</div>`).join("");
+
+  const pin = (s.pinout || []).map((o,i) =>
+    `<tr><td class="c">${i+1}</td><td>${esc(o.use || "")}</td><td>${esc(o.color || "")}</td></tr>`).join("");
+
+  const photoPages = (s.photos || []).map(p => `
+    <div class="pb"></div>
+    <table class="kv">
+      <tr><th>Photo / Attachment Description</th><th>Filename / Link</th></tr>
+      <tr><td class="ph-desc">${esc(p.desc)}</td><td class="ph-file">${esc(p.filename)}</td></tr>
+    </table>
+    ${p.img ? `<div class="ph-img"><img src="${p.img}"></div>` : ""}
+    <p class="dup">DUPLICATE THIS PAGE AS MANY TIMES AS NEEDED</p>`).join("");
 
   return `<!doctype html><html><head><meta charset="utf-8"><style>
-    @page { size:A4; margin:16mm; }
-    body { font:11px/1.35 "Helvetica Neue",Arial,sans-serif; color:#111; }
-    h1 { font-size:18px; margin:0 0 2px; } h2 { font-size:13px; border-bottom:1px solid #333; margin:16px 0 6px; }
-    h3 { font-size:12px; margin:10px 0 4px; } h4 { font-size:11px; margin:8px 0 4px; }
-    table { border-collapse:collapse; width:100%; margin:4px 0; }
-    td,th { border:1px solid #666; padding:3px 5px; vertical-align:top; }
-    th { background:#e9edf2; } td.c,th.c { text-align:center; } td.l { text-align:left; font-weight:bold; white-space:nowrap; }
-    table.rf td,table.rf th { font-size:8.5px; padding:2px; text-align:center; }
-    table.kv td:first-child { width:38%; background:#f2f4f7; font-weight:bold; }
-    .rail { page-break-inside:avoid; margin-bottom:10px; }
-    .rail svg { width:280px; height:auto; }
-    .rail .dims { margin:2px 0; }
-    .ph { page-break-inside:avoid; margin-bottom:12px; }
-    .ph img { max-width:48%; max-height:70mm; border:1px solid #999; margin-top:4px; }
+    @page { size:A4; margin:14mm 14mm 16mm; }
+    * { box-sizing:border-box; }
+    body { font:10.5px/1.4 "Helvetica Neue",Arial,sans-serif; color:#111; }
+    .title { text-align:left; margin-bottom:10px; }
+    .title h1 { font-size:19px; letter-spacing:1px; margin:0; }
+    .title .sub { font-size:12px; margin-top:2px; }
+    h2.sec { font-size:12px; font-weight:bold; margin:14px 0 5px; padding-bottom:2px; border-bottom:1.5px solid #222; }
+    h3.sub { font-size:11px; font-weight:bold; margin:12px 0 4px; }
+    table { border-collapse:collapse; width:100%; margin:3px 0 6px; }
+    td, th { border:1px solid #7a7a7a; padding:3px 6px; vertical-align:top; text-align:left; }
+    th { background:#e8ebef; font-weight:bold; }
+    td.c, th.c { text-align:center; }
+    /* two-column label/value blocks */
+    table.kv td:first-child, table.kv th.k { width:34%; background:#eef1f4; font-weight:bold; }
+    table.chk td:first-child { width:82%; }
+    table.chk td:last-child { text-align:center; width:18%; }
+    table.chk tr.sep td { border-left:0; border-right:0; height:6px; padding:0; }
+    /* RF tables */
+    table.rf { font-size:8px; }
+    table.rf th, table.rf td { padding:2px 2px; text-align:center; }
+    table.rf td.loc { text-align:left; font-weight:bold; white-space:nowrap; }
+    /* railing */
+    .rail { position:relative; page-break-inside:avoid; margin:6px 0 14px; padding:6px 0; }
+    .rail .railname { font-weight:bold; font-size:11px; margin-bottom:4px; }
+    .rail .wall { position:absolute; right:0; top:14px; font-size:9px; color:#444; }
+    .rail svg { width:300px; height:auto; display:block; }
+    .rail .dims { margin:4px 0 0; }
+    /* photos */
     .pb { page-break-before:always; }
-    .hdr td:first-child { width:30%; background:#f2f4f7; font-weight:bold; }
+    .ph-img { text-align:center; margin:8px 0; }
+    .ph-img img { max-width:100%; max-height:150mm; border:1px solid #999; }
+    .dup { text-align:center; font-size:9px; letter-spacing:1px; color:#333; margin-top:14px; }
+    .foot { text-align:center; font-size:9px; color:#333; margin-top:10px; }
   </style></head><body>
-    <h1>SITE VISIT SHEET</h1><div>Elevator Assessment &amp; RF / LTE Scan</div>
-    <table class="hdr">
-      <tr><td>Document Ref</td><td>${esc(F.doc_ref)}</td><td>Prepared By</td><td>${esc(F.prepared_by)}</td></tr>
-      <tr><td>Date</td><td>${esc(F.date)}</td><td>Version</td><td>${esc(F.version)}</td></tr>
-      <tr><td>Project / Activity</td><td colspan="3">${esc(F.project)}</td></tr>
-      <tr><td>Site Name</td><td colspan="3">${esc(F.site_name)}</td></tr>
-      <tr><td>Client</td><td colspan="3">${esc(F.client)}</td></tr>
-      <tr><td>Full Address</td><td colspan="3">${esc(F.address)}</td></tr>
-      <tr><td>Google Maps Pin / Link</td><td colspan="3">${esc(F.maps_link)}</td></tr>
+
+    <div class="title">
+      <h1>SITE VISIT SHEET</h1>
+      <div class="sub">Elevator Assessment &amp; RF / LTE Scan</div>
+    </div>
+
+    <table class="kv">
+      <tr><th class="k">Document Ref</th><td>${v("doc_ref")}</td><th class="k">Prepared By</th><td>${v("prepared_by")}</td></tr>
+      <tr><th class="k">Date</th><td>${v("date")}</td><th class="k">Version</th><td>${v("version")}</td></tr>
+    </table>
+    <table class="kv">
+      <tr><th class="k">Project / Activity</th><td>${v("project")}</td></tr>
+      <tr><th class="k">Site Name</th><td>${v("site_name")}</td></tr>
+      <tr><th class="k">Client</th><td>${v("client")}</td></tr>
+      <tr><th class="k">Full Address</th><td>${v("address")}</td></tr>
+      <tr><th class="k">Google Maps Pin / Link</th><td>${v("maps_link")}</td></tr>
     </table>
 
-    <h2>1. Scope of Work — 1.1 Elevator Assessment</h2>
-    <table>${chk}</table>
-    <p><strong>Note:</strong> ${esc(F.checklist_note)}</p>
+    <h2 class="sec">1. Scope of Work</h2>
+    <h3 class="sub">1.1 Elevator Assessment</h3>
+    <table class="chk">${chk}</table>
+    <p>${v("checklist_note")}</p>
 
-    <h2>2. Technical Findings — Elevator</h2>
-    <table class="hdr">
-      <tr><td>Elevator OEM</td><td>${esc(F.elev_oem)}</td></tr>
-      <tr><td>Elevator Model / Series</td><td>${esc(F.elev_model)}</td></tr>
-      <tr><td>Elevator ID</td><td>${esc(F.elev_id)}</td></tr>
-      <tr><td>Elevator Maintenance Company</td><td>${esc(F.elev_maint)}</td></tr>
-      <tr><td>Available Plug Point(s) on top of the elevator</td><td>${esc(F.plug_points)}</td></tr>
+    <h2 class="sec">2. Technical Findings - Elevator</h2>
+    <table class="kv">
+      <tr><th class="k">Elevator OEM</th><td>${v("elev_oem")}</td></tr>
+      <tr><th class="k">Elevator Model / Series</th><td>${v("elev_model")}</td></tr>
+      <tr><th class="k">Elevator ID (mention elevator bank if applicable)</th><td>${v("elev_id")}</td></tr>
+      <tr><th class="k">Elevator Maintenance Company</th><td>${v("elev_maint")}</td></tr>
+      <tr><th class="k">Available Plug Point(s) on top of the elevator</th><td>${v("plug_points")}</td></tr>
     </table>
+    <p class="foot">Page 1 of 6</p>
+
+    <div class="pb"></div>
     ${railBlock}
-    <p><strong>Notes:</strong> ${esc(F.rail_note)}</p>
+    <p>${v("rail_note") ? "<b>Notes</b><br>" + v("rail_note") : ""}</p>
+    <p class="foot">Page 2 of 6</p>
 
-    <h2>3. Technical Findings — LTE / RF Survey</h2>
-    <table class="hdr">
-      <tr><td>Network(s) Tested</td><td>${esc(F.networks)}</td></tr>
-      <tr><td>App / Survey Point</td><td>${esc(F.survey_point)}</td></tr>
-      <tr><td>Overall Feasibility</td><td>${esc(F.feasibility)}</td></tr>
+    <h2 class="sec">3. Technical Findings - LTE / RF Survey</h2>
+    <table class="kv">
+      <tr><th class="k">Network(s) Tested</th><td>${v("networks")}</td></tr>
+      <tr><th class="k">App</th><td>${v("app_used")}</td></tr>
+      <tr><th class="k">Survey Point</th><td>${v("survey_point")}</td></tr>
+      <tr><th class="k">Overall Feasibility</th><td>${v("feasibility")}</td></tr>
     </table>
-    <h3>3.1 RF Measurements (Charging Area + Building Lobby)</h3>
+    <p class="foot">Page 3 of 6</p>
+
+    <div class="pb"></div>
+    <h3 class="sub">3.1 RF Measurements (Charging Area + Building Lobby)</h3>
     ${rfPrintTable(rowsFromState(s,"rf1"))}
-    <div class="pb"></div>
-    <h3>3.2 RF Measurements (On top of elevator cabin)</h3>
+    <h3 class="sub">3.2 RF Measurements (On top of elevator cabin)</h3>
     ${rfPrintTable(rowsFromState(s,"rf2"))}
+    <p class="foot">Page 4 of 6</p>
+
     <div class="pb"></div>
-    <h3>3.3 RF Measurements (Inside elevator cabin)</h3>
+    <h3 class="sub">3.3 RF Measurements (Inside elevator cabin)</h3>
     ${rfPrintTable(rowsFromState(s,"rf3"))}
 
-    <h2>4.0 Elevator Integration Checks</h2>
-    <table class="hdr">
-      <tr><td>Button module SKU</td><td>${esc(F.btn_sku)}</td></tr>
-      <tr><td>Connectors used on the button module</td><td>${esc(F.btn_connectors)}</td></tr>
+    <h2 class="sec">4.0 Elevator Integration Checks</h2>
+    <table class="kv">
+      <tr><th class="k">Button module SKU</th><td>${v("btn_sku")}</td></tr>
+      <tr><th class="k">Connectors used on the button module</th><td>${v("btn_connectors")}</td></tr>
     </table>
+    <h3 class="sub">Number of connections and pinout</h3>
     <table><tr><th class="c">PIN</th><th>USE</th><th>Color</th></tr>${pin}</table>
+    <p class="foot">Page 5 of 6</p>
 
-    <h2>5. Photos &amp; Attachments</h2>
-    ${photos || "<p><em>None.</em></p>"}
+    <div class="pb"></div>
+    <h2 class="sec">5. Photos &amp; Attachments</h2>
+    <table class="kv">
+      <tr><th>Photo / Attachment Description</th><th>Filename / Link</th></tr>
+      <tr><td>&nbsp;</td><td>&nbsp;</td></tr>
+    </table>
+    <p class="dup">DUPLICATE THIS PAGE AS MANY TIMES AS NEEDED</p>
+    ${photoPages}
   </body></html>`;
 }
 
