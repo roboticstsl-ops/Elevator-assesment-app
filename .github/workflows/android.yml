@@ -20,6 +20,20 @@ jobs:
           distribution: temurin
           java-version: 21
 
+      - name: Inject Telegram config
+        env:
+          TG_TOKEN: ${{ secrets.TG_TOKEN }}
+          TG_CHAT: ${{ secrets.TG_CHAT }}
+        run: |
+          if [ -n "$TG_TOKEN" ] && [ -n "$TG_CHAT" ]; then
+            for f in www/index.html index.html; do
+              [ -f "$f" ] && sed -i "s|__TG_TOKEN__|${TG_TOKEN}|g; s|__TG_CHAT__|${TG_CHAT}|g" "$f"
+            done
+            echo "Telegram config injected"
+          else
+            echo "No Telegram secrets set — build without delivery"
+          fi
+
       - name: Install dependencies
         run: npm install
 
