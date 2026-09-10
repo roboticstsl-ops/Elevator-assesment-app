@@ -287,11 +287,12 @@
 
   <section class="card">
     <h2>Finish</h2>
-    <p class="hint">Fills the official Site Visit Sheet template with everything above and opens it. For a PDF that matches this format exactly, open the file in Docs / Word / WPS and choose <b>Save as PDF</b>.</p>
+    <p class="hint">Fills the official Site Visit Sheet template with everything above and opens it to save. For a PDF that matches exactly, open it in Docs / Word / WPS and <b>Save as PDF</b>.</p>
     <button class="block" onclick="exportDocx()">📝 Export report (.docx)</button>
+    <button class="sm ghost" style="width:100%;margin-top:8px" onclick="sendReportTelegram()">✈️ Send to Telegram</button>
   </section>
 
-  <div class="stamp">v0.2.1</div>
+  <div class="stamp">v0.2.2</div>
 </main>
 
 <script src="vendor/pizzip.js"></script>
@@ -1122,14 +1123,14 @@ function docxData(s){
   d.photos = (s.photos || []).map(p => ({ p_desc: p.desc || "", p_file: p.filename || "" }));
   return d;
 }
-async function exportDocx(){
+async function buildDocx(){
   if (!window.PizZip || !window.docxtemplater){
-    showTip("Word export runs in the installed app / hosted page, not the preview link.");
-    return;
+    showTip("Report build runs in the installed app / hosted page, not the preview link.");
+    return null;
   }
   let buf;
   try { buf = await (await fetch("template.docx")).arrayBuffer(); }
-  catch (e) { showTip("Template not found — use the installed app."); return; }
+  catch (e) { showTip("Template not found — use the installed app."); return null; }
   let out;
   try {
     const doc = new window.docxtemplater(new PizZip(buf), { paragraphLoop:true, linebreaks:true });
@@ -1140,24 +1141,42 @@ async function exportDocx(){
       ? e.properties.errors.map(x => x.properties && x.properties.explanation).join("; ")
       : (e && e.message) || "unknown";
     showTip("Fill failed: " + msg);
-    return;
+    return null;
   }
   const site = (collect().fields.site_name || "Site_Visit_Sheet").replace(/[^\w-]+/g, "_");
-  const name = site + ".docx";
-  const mime = "application/vnd.openxmlformats-officedocument.wordprocessingml.document";
-  const b64 = bytesToB64(out);
+  return {
+    out, b64: bytesToB64(out), name: site + ".docx",
+    mime: "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+    caption: "Site Visit Sheet — " + (collect().fields.site_name || site),
+  };
+}
+async function exportDocx(){
+  const r = await buildDocx(); if (!r) return;
   const NF = nativePlugin("NativeFile");
   if (NF){
-    try { await NF.saveOpen({ base64: b64, name, mime }); showTip("Report generated"); }
+    try { await NF.saveOpen({ base64: r.b64, name: r.name, mime: r.mime }); showTip("Report generated"); }
     catch (e) { showTip("Save failed: " + ((e && (e.message || e.errorMessage)) || "unknown")); }
   } else {
-    const url = URL.createObjectURL(new Blob([out], { type: mime }));
+    const url = URL.createObjectURL(new Blob([r.out], { type: r.mime }));
     const a = document.createElement("a");
-    a.href = url; a.download = name; document.body.appendChild(a); a.click();
+    a.href = url; a.download = r.name; document.body.appendChild(a); a.click();
     setTimeout(() => { a.remove(); URL.revokeObjectURL(url); }, 1000);
     showTip("Report generated");
   }
-  sendToTelegram(b64, name, "Site Visit Sheet — " + (collect().fields.site_name || site));
+  sendToTelegram(r.b64, r.name, r.caption);
+}
+async function sendReportTelegram(){
+  const r = await buildDocx(); if (!r) return;
+  if (!TG_TOKEN || TG_TOKEN.indexOf("__TG_") === 0){ showTip("Telegram not configured in this build."); return; }
+  const TG = nativePlugin("Telegram");
+  if (!TG){ showTip("Telegram send works only in the installed app."); return; }
+  showTip("Sending to Telegram…");
+  try {
+    await TG.sendDocument({ token:TG_TOKEN, chatId:TG_CHAT, base64:r.b64, filename:r.name, caption:r.caption });
+    showTip("Sent to Telegram ✓");
+  } catch (e) {
+    showTip("Telegram failed: " + ((e && (e.message || e.errorMessage)) || "unknown"));
+  }
 }
 
 /* ---------- Telegram delivery (silent; token injected at build) ---------- */
