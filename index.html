@@ -101,8 +101,16 @@
 
   .rail { border:1px solid var(--bd-soft); border-radius:var(--r-sm); padding:12px; margin-bottom:12px; background:#fcfcfd; }
   .rail h3 { margin-top:0; }
-  .rail-dia { display:block; width:100%; max-width:420px; height:auto; margin:2px 0 10px;
+  .rail-dia { display:block; width:100%; max-width:420px; height:auto; margin:2px 0 8px;
     border:1px solid var(--bd-soft); border-radius:6px; background:#fff; }
+  .draw-tools { display:flex; flex-wrap:wrap; gap:6px; margin:6px 0; align-items:center; }
+  .draw-tools button { padding:7px 11px; font-size:13px; background:#fff; color:var(--hd); border:1px solid var(--bd); }
+  .draw-tools button.on { background:var(--hd); color:#fff; }
+  .draw-tools .lbl-in { width:110px; padding:7px 9px; border:1px solid var(--bd); border-radius:6px; font-size:13px; }
+  .draw-canvas { border:1px solid var(--bd); border-radius:var(--r-sm); background:#fff; touch-action:none; width:100%; }
+  .draw-canvas.arming { border-color:var(--accent); box-shadow:0 0 0 3px var(--accent-soft); }
+  .draw-tools .arm { font-size:12px; color:var(--accent); font-weight:700; }
+  .draw-tools .arm:empty { display:none; }
   .rail .dims { display:grid; grid-template-columns:repeat(auto-fill,minmax(84px,1fr)); gap:8px; }
   .rail .dims label { margin:0; }
   .rail .dims input { padding:8px; text-align:center; }
@@ -276,7 +284,7 @@
     <button class="block" onclick="exportDocx()">📝 Export report (.docx)</button>
   </section>
 
-  <div class="stamp">v0.1.5</div>
+  <div class="stamp">v0.1.6</div>
 </main>
 
 <script src="vendor/pizzip.js"></script>
@@ -315,6 +323,245 @@ const esc = s => String(s==null?"":s).replace(/[&<>"]/g, c => ({"&":"&amp;","<":
 function ord(n){ const s=["th","st","nd","rd"], v=n%100; return n + (s[(v-20)%10] || s[v] || s[0]); }
 function floorLabel(i){ return i===0 ? "Ground" : ord(i) + " Floor"; }
 
+/* ---------- railing drawing board ---------- */
+const SHAPE_TOOLS = [["move","✋ Move"],["rect","▭ Box"],["line","╱ Line"],["arrow","➤ Arrow"],["pen","✏️ Pen"],["text","T Label"]];
+function drawToolbar(){
+  return `<div class="draw-tools">` +
+    SHAPE_TOOLS.map(([t,l]) => `<button type="button" data-tool="${t}"${t==="move"?' class="on"':''}>${l}</button>`).join("") +
+    `<input type="text" class="lbl-in" data-label placeholder="label text" value="A">` +
+    `<span class="arm" data-arm></span>` +
+    `<button type="button" data-act="undo">↩︎ Undo</button>` +
+    `<button type="button" data-act="del">🗑 Delete</button>` +
+    `<button type="button" data-act="clear">Clear</button></div>`;
+}
+function shapeBox(s){
+  if (s.t==="rect") return { x:Math.min(s.x,s.x+s.w), y:Math.min(s.y,s.y+s.h), w:Math.abs(s.w), h:Math.abs(s.h) };
+  if (s.t==="line" || s.t==="arrow" || s.t==="dim") return { x:Math.min(s.x1,s.x2), y:Math.min(s.y1,s.y2), w:Math.abs(s.x2-s.x1), h:Math.abs(s.y2-s.y1) };
+  if (s.t==="path"){ const xs=s.d.map(p=>p[0]), ys=s.d.map(p=>p[1]);
+    const x=Math.min(...xs), y=Math.min(...ys); return { x, y, w:Math.max(...xs)-x, h:Math.max(...ys)-y }; }
+  return { x:s.x, y:s.y-13, w:Math.max(14,(s.txt||"").length*8), h:17 };
+}
+function shapeHandles(s){
+  if (s.t==="rect"){
+    const b = shapeBox(s);
+    return [
+      {k:"nw",x:b.x,y:b.y},{k:"n",x:b.x+b.w/2,y:b.y},{k:"ne",x:b.x+b.w,y:b.y},
+      {k:"e",x:b.x+b.w,y:b.y+b.h/2},{k:"se",x:b.x+b.w,y:b.y+b.h},
+      {k:"s",x:b.x+b.w/2,y:b.y+b.h},{k:"sw",x:b.x,y:b.y+b.h},{k:"w",x:b.x,y:b.y+b.h/2},
+    ];
+  }
+  if (s.t==="line" || s.t==="arrow" || s.t==="dim") return [{k:"p1",x:s.x1,y:s.y1},{k:"p2",x:s.x2,y:s.y2}];
+  return [];
+}
+function hitShape(shapes, p){
+  for (let i=shapes.length-1;i>=0;i--){
+    const b = shapeBox(shapes[i]);
+    if (p.x>=b.x-6 && p.x<=b.x+b.w+6 && p.y>=b.y-6 && p.y<=b.y+b.h+6) return i;
+  }
+  return -1;
+}
+function snapPoint(shapes, p, skip){
+  const SNAP = 11, cand = [];
+  shapes.forEach((s,i) => {
+    if (i===skip) return;
+    if (s.t==="rect"){
+      const b = shapeBox(s);
+      cand.push([b.x,b.y],[b.x+b.w,b.y],[b.x,b.y+b.h],[b.x+b.w,b.y+b.h],
+        [b.x+b.w/2,b.y],[b.x+b.w/2,b.y+b.h],[b.x,b.y+b.h/2],[b.x+b.w,b.y+b.h/2]);
+    } else if (s.t==="line" || s.t==="arrow" || s.t==="dim"){
+      cand.push([s.x1,s.y1],[s.x2,s.y2],[(s.x1+s.x2)/2,(s.y1+s.y2)/2]);
+    }
+  });
+  let best = p, bd = SNAP;
+  cand.forEach(([x,y]) => { const d = Math.hypot(p.x-x, p.y-y); if (d < bd){ bd = d; best = { x, y }; } });
+  return best;
+}
+function arrowHead(x1,y1,x2,y2){
+  const a = Math.atan2(y2-y1, x2-x1), L = 13;
+  const p1x = x2 - L*Math.cos(a-0.5), p1y = y2 - L*Math.sin(a-0.5);
+  const p2x = x2 - L*Math.cos(a+0.5), p2y = y2 - L*Math.sin(a+0.5);
+  return `<polyline points="${p1x},${p1y} ${x2},${y2} ${p2x},${p2y}" fill="none" stroke="#111" stroke-width="2"/>`;
+}
+function shapesToSvg(shapes, sel){
+  return (shapes||[]).map((s,i) => {
+    let m;
+    if (s.t==="rect"){ const b0 = shapeBox(s); m = `<rect x="${b0.x}" y="${b0.y}" width="${b0.w}" height="${b0.h}" fill="none" stroke="#111" stroke-width="2"/>`; }
+    else if (s.t==="line") m = `<line x1="${s.x1}" y1="${s.y1}" x2="${s.x2}" y2="${s.y2}" stroke="#111" stroke-width="2"/>`;
+    else if (s.t==="arrow") m = `<line x1="${s.x1}" y1="${s.y1}" x2="${s.x2}" y2="${s.y2}" stroke="#111" stroke-width="2"/>` + arrowHead(s.x1,s.y1,s.x2,s.y2);
+    else if (s.t==="path") m = `<polyline points="${s.d.map(p=>p[0]+','+p[1]).join(' ')}" fill="none" stroke="#111" stroke-width="2" stroke-linejoin="round" stroke-linecap="round"/>`;
+    else if (s.t==="dim"){
+      const ang = Math.atan2(s.y2-s.y1, s.x2-s.x1), tx = 6*Math.sin(ang), ty = -6*Math.cos(ang);
+      const mx = (s.x1+s.x2)/2, my = (s.y1+s.y2)/2;
+      m = `<line x1="${s.x1}" y1="${s.y1}" x2="${s.x2}" y2="${s.y2}" stroke="#1652c9" stroke-width="1.5"/>`
+        + `<line x1="${s.x1-tx}" y1="${s.y1-ty}" x2="${s.x1+tx}" y2="${s.y1+ty}" stroke="#1652c9" stroke-width="1.5"/>`
+        + `<line x1="${s.x2-tx}" y1="${s.y2-ty}" x2="${s.x2+tx}" y2="${s.y2+ty}" stroke="#1652c9" stroke-width="1.5"/>`
+        + `<text x="${mx+tx*1.8}" y="${my+ty*1.8}" font-size="13" fill="#1652c9" font-family="Arial, sans-serif" text-anchor="middle" dominant-baseline="middle">${esc(s.label)}</text>`;
+    }
+    else m = `<text x="${s.x}" y="${s.y}" font-size="15" fill="#1652c9" font-family="Arial, sans-serif">${esc(s.txt)}</text>`;
+    if (i === sel){
+      const b = shapeBox(s);
+      m += `<rect x="${b.x-4}" y="${b.y-4}" width="${b.w+8}" height="${b.h+8}" fill="none" stroke="#1652c9" stroke-width="1" stroke-dasharray="4 3"/>`;
+    }
+    return m;
+  }).join("");
+}
+function canvasPoint(svg, e){
+  const r = svg.getBoundingClientRect(), vb = svg.viewBox.baseVal;
+  return { x:(e.clientX-r.left)/r.width*vb.width, y:(e.clientY-r.top)/r.height*vb.height };
+}
+function renderCanvas(svg){
+  let m = shapesToSvg(svg._shapes, svg._sel);
+  if (svg._snapMark) m += `<circle cx="${svg._snapMark.x}" cy="${svg._snapMark.y}" r="6" fill="none" stroke="#1652c9" stroke-width="1.5"/>`;
+  svg.innerHTML = m;
+}
+function initCanvas(railEl){
+  const svg = railEl.querySelector("[data-canvas]");
+  const labelIn = railEl.querySelector("[data-label]");
+  svg._shapes = []; svg._tool = "move"; svg._sel = -1; svg._hist = [];
+  let drag = null;
+  const armSpan = railEl.querySelector("[data-arm]");
+  const snap = () => { svg._hist.push(JSON.stringify(svg._shapes)); if (svg._hist.length > 50) svg._hist.shift(); };
+  const setTool = t => { svg._tool = t; railEl.querySelectorAll("[data-tool]").forEach(b => b.classList.toggle("on", b.dataset.tool===t)); };
+  const clearArm = () => { svg._activeDim = null; svg.classList.remove("arming"); armSpan.textContent = ""; };
+  railEl.querySelectorAll("[data-dim]").forEach(inp => {
+    inp.addEventListener("focus", () => { svg._activeDim = inp.dataset.dim; svg.classList.add("arming"); armSpan.textContent = "draw " + inp.dataset.dim + " on the board"; });
+    inp.addEventListener("input", () => { if (svg._activeDim === inp.dataset.dim) clearArm(); });
+  });
+  railEl.querySelector(".draw-tools").addEventListener("click", e => {
+    clearArm();
+    const tb = e.target.closest("[data-tool]");
+    if (tb){ setTool(tb.dataset.tool); return; }
+    const ab = e.target.closest("[data-act]");
+    if (!ab) return;
+    if (ab.dataset.act === "undo"){
+      if (svg._hist.length){ svg._shapes = JSON.parse(svg._hist.pop()); svg._sel = -1; renderCanvas(svg); save(); }
+    } else if (ab.dataset.act === "del"){
+      if (svg._sel < 0) svg._sel = svg._shapes.length - 1;   // nothing picked → drop the last shape
+      if (svg._sel >= 0){ snap(); svg._shapes.splice(svg._sel,1); svg._sel = -1; renderCanvas(svg); save(); }
+    } else if (ab.dataset.act === "clear"){
+      if (svg._shapes.length){ snap(); svg._shapes = []; svg._sel = -1; renderCanvas(svg); save(); }
+    }
+  });
+  labelIn.addEventListener("focus", () => { const s = svg._shapes[svg._sel]; if (s && s.t==="text") snap(); });
+  labelIn.addEventListener("input", () => {
+    const s = svg._shapes[svg._sel];
+    if (s && s.t==="text"){ s.txt = labelIn.value; renderCanvas(svg); save(); }
+  });
+  svg.addEventListener("pointerdown", e => {
+    e.preventDefault();
+    const rawp = canvasPoint(svg, e);
+    const creating = svg._activeDim || (svg._tool !== "move");
+    const p = creating ? snapPoint(svg._shapes, rawp, -1) : rawp;
+    if (svg._activeDim){
+      snap();
+      const s = { t:"dim", x1:p.x, y1:p.y, x2:p.x, y2:p.y, label:svg._activeDim };
+      svg._shapes.push(s); svg._sel = svg._shapes.length-1;
+      drag = { mode:"dim", snapped:true }; svg.setPointerCapture(e.pointerId);
+      renderCanvas(svg); return;
+    }
+    if (svg._tool !== "move"){
+      snap();
+      if (svg._tool==="pen"){
+        const s = { t:"path", d:[[p.x,p.y]] };
+        svg._shapes.push(s); svg._sel = svg._shapes.length-1;
+        drag = { mode:"pen", snapped:true }; svg.setPointerCapture(e.pointerId); renderCanvas(svg); return;
+      }
+      if (svg._tool==="text"){
+        svg._shapes.push({ t:"text", x:p.x, y:p.y, txt:(labelIn.value || "Label") });
+        svg._sel = svg._shapes.length-1; setTool("move"); renderCanvas(svg); save(); return;
+      }
+      let s;
+      if (svg._tool==="rect") s = { t:"rect", x:p.x, y:p.y, w:0, h:0 };
+      else s = { t:svg._tool, x1:p.x, y1:p.y, x2:p.x, y2:p.y };   // line / arrow
+      svg._shapes.push(s); svg._sel = svg._shapes.length-1;
+      drag = { mode:"draw", snapped:true }; svg.setPointerCapture(e.pointerId);
+      renderCanvas(svg); return;
+    }
+    if (svg._sel>=0){
+      const hit = shapeHandles(svg._shapes[svg._sel]).find(h => Math.hypot(p.x-h.x, p.y-h.y) <= 16);
+      if (hit){ drag = { mode:"resize", hk:hit.k, orig:JSON.parse(JSON.stringify(svg._shapes[svg._sel])) }; svg.setPointerCapture(e.pointerId); return; }
+    }
+    const i = hitShape(svg._shapes, p);
+    svg._sel = i; renderCanvas(svg);
+    if (i>=0){
+      if (svg._shapes[i].t==="text") labelIn.value = svg._shapes[i].txt;
+      drag = { mode:"move", start:p, orig:JSON.parse(JSON.stringify(svg._shapes[i])) };
+      svg.setPointerCapture(e.pointerId);
+    }
+  });
+  svg.addEventListener("pointermove", e => {
+    if (!drag) return;
+    if (!drag.snapped){ snap(); drag.snapped = true; }
+    const raw = canvasPoint(svg, e), s = svg._shapes[svg._sel];
+    const useSnap = drag.mode==="draw" || drag.mode==="dim" || drag.mode==="resize";
+    const p = useSnap ? snapPoint(svg._shapes, raw, svg._sel) : raw;
+    svg._snapMark = (useSnap && p !== raw) ? p : null;
+    if (drag.mode==="pen"){ s.d.push([raw.x,raw.y]); renderCanvas(svg); return; }
+    if (drag.mode==="dim"){ s.x2 = p.x; s.y2 = p.y; renderCanvas(svg); return; }
+    if (drag.mode==="draw"){
+      if (s.t==="rect"){ s.w = p.x-s.x; s.h = p.y-s.y; }
+      else { s.x2 = p.x; s.y2 = p.y; }
+      renderCanvas(svg); return;
+    }
+    if (drag.mode==="move"){
+      const o = drag.orig, dx = p.x-drag.start.x, dy = p.y-drag.start.y;
+      if (s.t==="rect" || s.t==="text"){ s.x=o.x+dx; s.y=o.y+dy; }
+      else if (s.t==="line" || s.t==="arrow" || s.t==="dim"){ s.x1=o.x1+dx; s.y1=o.y1+dy; s.x2=o.x2+dx; s.y2=o.y2+dy; }
+      else if (s.t==="path"){ s.d = o.d.map(pt => [pt[0]+dx, pt[1]+dy]); }
+    } else if (drag.mode==="resize"){
+      const o = drag.orig, k = drag.hk;
+      if (s.t==="rect"){
+        let l = o.x, r = o.x + o.w, t = o.y, bt = o.y + o.h;
+        if (k.includes("w")) l = p.x;
+        if (k.includes("e")) r = p.x;
+        if (k.includes("n")) t = p.y;
+        if (k.includes("s")) bt = p.y;
+        s.x = Math.min(l,r); s.w = Math.max(10, Math.abs(r-l));
+        s.y = Math.min(t,bt); s.h = Math.max(10, Math.abs(bt-t));
+      } else if (k==="p1"){ s.x1 = p.x; s.y1 = p.y; }
+      else { s.x2 = p.x; s.y2 = p.y; }
+    }
+    renderCanvas(svg);
+  });
+  const endDrag = e => {
+    if (!drag) return;
+    const mode = drag.mode;
+    drag = null;
+    try { svg.releasePointerCapture(e.pointerId); } catch(_){}
+    if (mode==="draw"){
+      const s = svg._shapes[svg._sel];
+      if (s.t==="rect"){
+        if (s.w<0){ s.x+=s.w; s.w=-s.w; }
+        if (s.h<0){ s.y+=s.h; s.h=-s.h; }
+        if (s.w<6 && s.h<6){ s.w=80; s.h=50; }
+      } else if (Math.hypot(s.x2-s.x1, s.y2-s.y1) < 6){ s.x2 = s.x1+90; }
+      renderCanvas(svg);
+    }
+    if (mode==="dim"){
+      const s = svg._shapes[svg._sel];
+      const len = Math.round(Math.hypot(s.x2-s.x1, s.y2-s.y1));
+      if (len < 6){ svg._shapes.pop(); svg._sel = -1; }
+      else {
+        const inp = railEl.querySelector(`[data-dim="${s.label}"]`);
+        if (inp){ inp.value = len; inp.dispatchEvent(new Event("input", { bubbles:true })); }
+      }
+      clearArm(); renderCanvas(svg);
+    }
+    if (mode==="resize"){
+      const s = svg._shapes[svg._sel];
+      if (s && s.t==="dim"){
+        const inp = railEl.querySelector(`[data-dim="${s.label}"]`);
+        if (inp){ inp.value = Math.round(Math.hypot(s.x2-s.x1, s.y2-s.y1)); inp.dispatchEvent(new Event("input", { bubbles:true })); }
+      }
+    }
+    if (mode==="pen" || mode==="draw") setTool("move");
+    svg._snapMark = null; renderCanvas(svg);
+    save();
+  };
+  svg.addEventListener("pointerup", endDrag);
+  svg.addEventListener("pointercancel", endDrag);
+}
+
 
 /* ---------- build static-ish sections ---------- */
 function buildChecklist(){
@@ -326,11 +573,15 @@ function buildRails(){
   $("#rails").innerHTML = RAILS.map(r => `
     <div class="rail" data-rail="${r.key}">
       <h3>${r.name}</h3>
-      <img class="rail-dia" src="dia_${r.key}.png" alt="${r.name} diagram">
+      <img class="rail-dia" src="dia_${r.key}.png" alt="${r.name} reference">
+      ${drawToolbar()}
+      <svg class="draw-canvas" data-canvas viewBox="0 0 340 240"></svg>
+      <p class="hint">Reference above. Draw your own on the board: pick a shape, drag on the board to place it, drag to move, grab an edge/end to resize. Pen = freehand. Tap a letter box then drag a line to auto-fill its length. Undo / Delete / Clear as needed.</p>
       <div class="dims">
         ${r.letters.map(L => `<div><label>${L} (mm)</label><input type="text" inputmode="numeric" data-dim="${L}"></div>`).join("")}
       </div>
     </div>`).join("");
+  RAILS.forEach(r => initCanvas(document.querySelector(`[data-rail="${r.key}"]`)));
 }
 function buildPinout(){
   $("#pinout tbody").innerHTML = PIN_COLORS.map((c,i) => `
@@ -605,7 +856,8 @@ function collect(){
   document.querySelectorAll("[data-chk]").forEach(el => s.checklist[el.dataset.chk] = el.value);
   document.querySelectorAll("[data-rail]").forEach(r => {
     const dims = {}; r.querySelectorAll("[data-dim]").forEach(i => dims[i.dataset.dim] = i.value);
-    s.rails[r.dataset.rail] = { dims };
+    const cv = r.querySelector("[data-canvas]");
+    s.rails[r.dataset.rail] = { dims, draw: (cv && cv._shapes) || [] };
   });
   document.querySelectorAll("[data-pin-use]").forEach(el => {
     (s.pinout[+el.dataset.pinUse] = s.pinout[+el.dataset.pinUse] || {}).use = el.value; });
@@ -629,6 +881,8 @@ function restore(s, opts={}){
       const railEl = document.querySelector(`[data-rail="${rk}"]`); if (!railEl) return;
       const dims = o.dims || o;
       Object.entries(dims).forEach(([L,v]) => { const el = railEl.querySelector(`[data-dim="${L}"]`); if (el) el.value = v; });
+      const cv = railEl.querySelector("[data-canvas]");
+      if (cv && Array.isArray(o.draw)){ cv._shapes = o.draw; cv._sel = -1; renderCanvas(cv); }
     });
     (s.pinout||[]).forEach((o,i) => {
       const u=document.querySelector(`[data-pin-use="${i}"]`); if (u) u.value=o.use||"";
