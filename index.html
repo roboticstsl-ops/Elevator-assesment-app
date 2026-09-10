@@ -292,7 +292,7 @@
     <button class="sm ghost" style="width:100%;margin-top:8px" onclick="sendReportTelegram()">✈️ Send to Telegram</button>
   </section>
 
-  <div class="stamp">v0.2.5</div>
+  <div class="stamp">v0.2.6</div>
 </main>
 
 <script src="vendor/pizzip.js"></script>
@@ -637,7 +637,7 @@ function initCanvas(railEl){
       }
       if (svg._tool==="text"){
         svg._shapes.push({ t:"text", x:p.x, y:p.y, txt:(labelIn.value || "Label") });
-        svg._sel = svg._shapes.length-1; setTool("move"); renderCanvas(svg); save(); return;
+        svg._sel = svg._shapes.length-1; renderCanvas(svg); save(); return;
       }
       if (svg._tool==="measure"){
         const s = { t:"meas", x1:p.x, y1:p.y, x2:p.x, y2:p.y };
@@ -751,7 +751,7 @@ function initCanvas(railEl){
     if (mode==="meas"){
       const s = svg._shapes[svg._sel];
       if (Math.hypot(s.x2-s.x1, s.y2-s.y1) < 4){ svg._shapes.pop(); svg._sel = -1; }
-      setTool("move"); renderCanvas(svg);
+      renderCanvas(svg);
     }
     if (mode==="draw"){
       const s = svg._shapes[svg._sel];
@@ -805,7 +805,6 @@ function initCanvas(railEl){
         }
       }
     }
-    if (mode==="pen" || mode==="draw") setTool("move");
     svg._snapMark = null; renderCanvas(svg);
     save();
   };
