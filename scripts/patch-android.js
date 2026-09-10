@@ -37,7 +37,7 @@ if (!xml.includes('android:name="android.hardware.camera"')) {
 fs.writeFileSync(manifestPath, xml);
 
 /* 2. native plugins --------------------------------------------------------- */
-const plugins = ["CellSignalPlugin", "NativePrintPlugin", "NativeFilePlugin"];
+const plugins = ["CellSignalPlugin", "NativePrintPlugin", "NativeFilePlugin", "TelegramPlugin"];
 for (const p of plugins) {
   fs.copyFileSync(`android-src/${p}.java`, path.join(javaDir, `${p}.java`));
 }
