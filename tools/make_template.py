@@ -200,11 +200,21 @@ def add_avg_table(after_tbl, prefix):
     tbl_el = t._tbl
     tbl_el.getparent().remove(tbl_el)
     after_tbl._tbl.addnext(tbl_el)
-    spacer = tbl_el.makeelement(qn("w:p"), {})
-    tbl_el.addnext(spacer)
+    # heading before, recommendation after
+    head = tbl_el.makeelement(qn("w:p"), {})
+    hr = head.makeelement(qn("w:r"), {}); ht = head.makeelement(qn("w:t"), {})
+    ht.text = "Summary — average across all RF measurements"
+    rpr = head.makeelement(qn("w:rPr"), {}); rpr.append(head.makeelement(qn("w:b"), {}))
+    hr.append(rpr); hr.append(ht); head.append(hr)
+    after_tbl._tbl.addnext(head)
+    rec = tbl_el.makeelement(qn("w:p"), {})
+    rr = rec.makeelement(qn("w:r"), {}); rt = rec.makeelement(qn("w:t"), {})
+    rt.set(qn("xml:space"), "preserve")
+    rt.text = "Recommended operator: {%s_better} (stronger average signal / feasibility)" % prefix
+    rr.append(rt); rec.append(rr)
+    tbl_el.addnext(rec)
 
-add_avg_table(T[9], "avg2")   # inside cabin block -> after 3.3
-add_avg_table(T[6], "avg1")   # charging/lobby + on-cabin block -> after network table
+add_avg_table(T[9], "avg")   # one summary table after 3.3, covering all measurements
 
 # ---- 5. pinout USE / Color (rows 3..6, cols 2..3) ----
 for i, row in enumerate(T[10].rows[3:7], start=1):

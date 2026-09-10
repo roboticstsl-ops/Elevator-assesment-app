@@ -292,7 +292,7 @@
     <button class="sm ghost" style="width:100%;margin-top:8px" onclick="sendReportTelegram()">✈️ Send to Telegram</button>
   </section>
 
-  <div class="stamp">v0.2.6</div>
+  <div class="stamp">v0.2.7</div>
 </main>
 
 <script src="vendor/pizzip.js"></script>
@@ -1205,13 +1205,18 @@ function docxData(s){
   }));
   d.rf1 = mkRows("rf1"); d.rf2 = mkRows("rf2"); d.rf3 = mkRows("rf3");
 
-  // per-carrier averages: block 1 = charging/lobby + on-top-of-cabin, block 2 = inside cabin
-  [["avg1", ["rf1","rf2"]], ["avg2", ["rf3"]]].forEach(([pfx, ids]) => {
-    ["du","et"].forEach(car => {
-      const a = avgBlock(ids, car);
-      ["rsrp","rsrq","sinr","dl","ul","ping","jit","feas"].forEach(k => d[pfx + "_" + car + "_" + k] = a[k]);
-    });
-  });
+  // one summary averages table over all RF measurements, per carrier
+  const A = { du: avgBlock(["rf1","rf2","rf3"], "du"), et: avgBlock(["rf1","rf2","rf3"], "et") };
+  ["du","et"].forEach(car => ["rsrp","rsrq","sinr","dl","ul","ping","jit","feas"]
+    .forEach(k => d["avg_" + car + "_" + k] = A[car][k]));
+  const rank = { Good:3, Acceptable:2, Poor:1, "":0 };
+  let better = "";
+  if (rank[A.du.feas] !== rank[A.et.feas]) better = rank[A.du.feas] > rank[A.et.feas] ? "du" : "e&";
+  else {
+    const du = parseFloat(A.du.rsrp), et = parseFloat(A.et.rsrp);
+    if (isFinite(du) && isFinite(et)) better = du >= et ? "du" : "e&";
+  }
+  d.avg_better = better;
 
   (s.pinout || []).slice(0, 4).forEach((o, i) => {
     d["pin" + (i + 1) + "_use"] = (o && o.use) || "";
