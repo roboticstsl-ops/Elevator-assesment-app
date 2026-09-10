@@ -291,7 +291,7 @@
     <button class="block" onclick="exportDocx()">📝 Export report (.docx)</button>
   </section>
 
-  <div class="stamp">v0.1.7</div>
+  <div class="stamp">v0.1.8</div>
 </main>
 
 <script src="vendor/pizzip.js"></script>
@@ -331,7 +331,7 @@ function ord(n){ const s=["th","st","nd","rd"], v=n%100; return n + (s[(v-20)%10
 function floorLabel(i){ return i===0 ? "Ground" : ord(i) + " Floor"; }
 
 /* ---------- railing drawing board ---------- */
-const SHAPE_TOOLS = [["move","✋ Move"],["rect","▭ Box"],["line","╱ Line"],["arrow","➤ Arrow"],["pen","✏️ Pen"],["text","T Label"]];
+const SHAPE_TOOLS = [["move","✋ Move"],["rect","▭ Box"],["line","╱ Line"],["arrow","➤ Arrow"],["pen","✏️ Pen"],["measure","📏 Measure"],["text","T Label"]];
 function drawToolbar(){
   return `<div class="draw-tools">` +
       SHAPE_TOOLS.map(([t,l]) => `<button type="button" data-tool="${t}"${t==="move"?' class="on"':''}>${l}</button>`).join("") +
@@ -362,7 +362,7 @@ function applyOrtho(on, ax, ay, p){
 }
 function shapeBox(s){
   if (s.t==="rect") return { x:Math.min(s.x,s.x+s.w), y:Math.min(s.y,s.y+s.h), w:Math.abs(s.w), h:Math.abs(s.h) };
-  if (s.t==="line" || s.t==="arrow" || s.t==="dim") return { x:Math.min(s.x1,s.x2), y:Math.min(s.y1,s.y2), w:Math.abs(s.x2-s.x1), h:Math.abs(s.y2-s.y1) };
+  if (s.t==="line" || s.t==="arrow" || s.t==="dim" || s.t==="meas") return { x:Math.min(s.x1,s.x2), y:Math.min(s.y1,s.y2), w:Math.abs(s.x2-s.x1), h:Math.abs(s.y2-s.y1) };
   if (s.t==="path"){ const xs=s.d.map(p=>p[0]), ys=s.d.map(p=>p[1]);
     const x=Math.min(...xs), y=Math.min(...ys); return { x, y, w:Math.max(...xs)-x, h:Math.max(...ys)-y }; }
   return { x:s.x, y:s.y-13, w:Math.max(14,(s.txt||"").length*8), h:17 };
@@ -376,8 +376,39 @@ function shapeHandles(s){
       {k:"s",x:b.x+b.w/2,y:b.y+b.h},{k:"sw",x:b.x,y:b.y+b.h},{k:"w",x:b.x,y:b.y+b.h/2},
     ];
   }
-  if (s.t==="line" || s.t==="arrow" || s.t==="dim") return [{k:"p1",x:s.x1,y:s.y1},{k:"p2",x:s.x2,y:s.y2}];
+  if (s.t==="line" || s.t==="arrow" || s.t==="dim" || s.t==="meas") return [{k:"p1",x:s.x1,y:s.y1},{k:"p2",x:s.x2,y:s.y2}];
   return [];
+}
+/* alignment guides while moving a shape: snap edges/centres to other shapes */
+function alignSnap(shapes, sel, mb){
+  const TOL = 4;
+  const mx = [["L",mb.x],["CX",mb.x+mb.w/2],["R",mb.x+mb.w]];
+  const my = [["T",mb.y],["CY",mb.y+mb.h/2],["B",mb.y+mb.h]];
+  let bx = null, by = null;
+  shapes.forEach((s,i) => {
+    if (i === sel) return;
+    const b = shapeBox(s);
+    [b.x, b.x+b.w/2, b.x+b.w].forEach(t => mx.forEach(([,v]) => {
+      const d = t - v; if (Math.abs(d) < TOL && (!bx || Math.abs(d) < Math.abs(bx.d))) bx = { d, at:t, b };
+    }));
+    [b.y, b.y+b.h/2, b.y+b.h].forEach(t => my.forEach(([,v]) => {
+      const d = t - v; if (Math.abs(d) < TOL && (!by || Math.abs(d) < Math.abs(by.d))) by = { d, at:t, b };
+    }));
+  });
+  const guides = [];
+  if (bx){ const y1 = Math.min(mb.y, bx.b.y), y2 = Math.max(mb.y+mb.h, bx.b.y+bx.b.h);
+           guides.push({ x1:bx.at, y1, x2:bx.at, y2 }); }
+  if (by){ const x1 = Math.min(mb.x, by.b.x), x2 = Math.max(mb.x+mb.w, by.b.x+by.b.w);
+           guides.push({ x1, y1:by.at, x2, y2:by.at }); }
+  return { dx: bx ? bx.d : 0, dy: by ? by.d : 0, guides };
+}
+function moveShape(s, o, dx, dy){
+  if (s.t==="rect" || s.t==="text"){ s.x = o.x+dx; s.y = o.y+dy; }
+  else if (s.t==="path"){ s.d = o.d.map(pt => [pt[0]+dx, pt[1]+dy]); }
+  else { s.x1 = o.x1+dx; s.y1 = o.y1+dy; s.x2 = o.x2+dx; s.y2 = o.y2+dy; }
+}
+function boxAfter(o, dx, dy){
+  const s = JSON.parse(JSON.stringify(o)); moveShape(s, o, dx, dy); return shapeBox(s);
 }
 function hitShape(shapes, p){
   for (let i=shapes.length-1;i>=0;i--){
@@ -415,13 +446,17 @@ function shapesToSvg(shapes, sel){
     else if (s.t==="line") m = `<line x1="${s.x1}" y1="${s.y1}" x2="${s.x2}" y2="${s.y2}" stroke="#111" stroke-width="2"/>`;
     else if (s.t==="arrow") m = `<line x1="${s.x1}" y1="${s.y1}" x2="${s.x2}" y2="${s.y2}" stroke="#111" stroke-width="2"/>` + arrowHead(s.x1,s.y1,s.x2,s.y2);
     else if (s.t==="path") m = `<polyline points="${s.d.map(p=>p[0]+','+p[1]).join(' ')}" fill="none" stroke="#111" stroke-width="2" stroke-linejoin="round" stroke-linecap="round"/>`;
-    else if (s.t==="dim"){
+    else if (s.t==="dim" || s.t==="meas"){
       const ang = Math.atan2(s.y2-s.y1, s.x2-s.x1), tx = 6*Math.sin(ang), ty = -6*Math.cos(ang);
       const mx = (s.x1+s.x2)/2, my = (s.y1+s.y2)/2;
-      m = `<line x1="${s.x1}" y1="${s.y1}" x2="${s.x2}" y2="${s.y2}" stroke="#1652c9" stroke-width="1.5"/>`
-        + `<line x1="${s.x1-tx}" y1="${s.y1-ty}" x2="${s.x1+tx}" y2="${s.y1+ty}" stroke="#1652c9" stroke-width="1.5"/>`
-        + `<line x1="${s.x2-tx}" y1="${s.y2-ty}" x2="${s.x2+tx}" y2="${s.y2+ty}" stroke="#1652c9" stroke-width="1.5"/>`
-        + `<text x="${mx+tx*1.8}" y="${my+ty*1.8}" font-size="13" fill="#1652c9" font-family="Arial, sans-serif" text-anchor="middle" dominant-baseline="middle">${esc(s.label)}</text>`;
+      const col = s.t==="meas" ? "#c0392b" : "#1652c9";
+      const label = s.t==="meas"
+        ? Math.round(Math.hypot(s.x2-s.x1, s.y2-s.y1)) + ""
+        : esc(s.label);
+      m = `<line x1="${s.x1}" y1="${s.y1}" x2="${s.x2}" y2="${s.y2}" stroke="${col}" stroke-width="1.5"${s.t==="meas"?' stroke-dasharray="5 3"':''}/>`
+        + `<line x1="${s.x1-tx}" y1="${s.y1-ty}" x2="${s.x1+tx}" y2="${s.y1+ty}" stroke="${col}" stroke-width="1.5"/>`
+        + `<line x1="${s.x2-tx}" y1="${s.y2-ty}" x2="${s.x2+tx}" y2="${s.y2+ty}" stroke="${col}" stroke-width="1.5"/>`
+        + `<text x="${mx+tx*2.2}" y="${my+ty*2.2}" font-size="12" fill="${col}" font-family="Arial, sans-serif" text-anchor="middle" dominant-baseline="middle" paint-order="stroke" stroke="#fff" stroke-width="3">${label}</text>`;
     }
     else m = `<text x="${s.x}" y="${s.y}" font-size="15" fill="#1652c9" font-family="Arial, sans-serif">${esc(s.txt)}</text>`;
     if (i === sel){
@@ -447,6 +482,9 @@ function renderCanvas(svg){
   const v = svg._vb || [0,0,340,240];
   let m = svg._grid ? gridSvg(v) : "";
   m += shapesToSvg(svg._shapes, svg._sel);
+  (svg._guides || []).forEach(g => {
+    m += `<line x1="${g.x1}" y1="${g.y1}" x2="${g.x2}" y2="${g.y2}" stroke="#e11d74" stroke-width="1" stroke-dasharray="3 3"/>`;
+  });
   if (svg._snapMark) m += `<circle cx="${svg._snapMark.x}" cy="${svg._snapMark.y}" r="6" fill="none" stroke="#1652c9" stroke-width="1.5"/>`;
   svg.innerHTML = m;
 }
@@ -537,6 +575,12 @@ function initCanvas(railEl){
         svg._shapes.push({ t:"text", x:p.x, y:p.y, txt:(labelIn.value || "Label") });
         svg._sel = svg._shapes.length-1; setTool("move"); renderCanvas(svg); save(); return;
       }
+      if (svg._tool==="measure"){
+        const s = { t:"meas", x1:p.x, y1:p.y, x2:p.x, y2:p.y };
+        svg._shapes.push(s); svg._sel = svg._shapes.length-1;
+        drag = { mode:"meas", snapped:true }; svg.setPointerCapture(e.pointerId);
+        renderCanvas(svg); return;
+      }
       let s;
       if (svg._tool==="rect") s = { t:"rect", x:p.x, y:p.y, w:0, h:0 };
       else s = { t:svg._tool, x1:p.x, y1:p.y, x2:p.x, y2:p.y };   // line / arrow
@@ -570,11 +614,16 @@ function initCanvas(railEl){
     }
     if (!drag.snapped){ snap(); drag.snapped = true; }
     const raw = canvasPoint(svg, e), s = svg._shapes[svg._sel];
-    const useSnap = drag.mode==="draw" || drag.mode==="dim" || drag.mode==="resize";
+    const useSnap = drag.mode==="draw" || drag.mode==="dim" || drag.mode==="resize" || drag.mode==="meas";
     let p = useSnap ? snapPoint(svg._shapes, raw, svg._sel) : raw;
-    if (useSnap) p = snapGrid(svg._grid, p);
+    if (useSnap && drag.mode!=="meas") p = snapGrid(svg._grid, p);
     svg._snapMark = (useSnap && (p.x!==raw.x || p.y!==raw.y)) ? p : null;
     if (drag.mode==="pen"){ s.d.push([raw.x,raw.y]); renderCanvas(svg); return; }
+    if (drag.mode==="meas"){
+      s.x2 = p.x; s.y2 = p.y;
+      showHud(Math.hypot(p.x-s.x1,p.y-s.y1), Math.atan2(p.y-s.y1,p.x-s.x1));
+      renderCanvas(svg); return;
+    }
     if (drag.mode==="dim"){
       const q = applyOrtho(svg._ortho, s.x1, s.y1, p);
       s.x2 = q.x; s.y2 = q.y;
@@ -588,10 +637,17 @@ function initCanvas(railEl){
       renderCanvas(svg); return;
     }
     if (drag.mode==="move"){
-      const o = drag.orig, dx = p.x-drag.start.x, dy = p.y-drag.start.y;
-      if (s.t==="rect" || s.t==="text"){ s.x=o.x+dx; s.y=o.y+dy; }
-      else if (s.t==="line" || s.t==="arrow" || s.t==="dim"){ s.x1=o.x1+dx; s.y1=o.y1+dy; s.x2=o.x2+dx; s.y2=o.y2+dy; }
-      else if (s.t==="path"){ s.d = o.d.map(pt => [pt[0]+dx, pt[1]+dy]); }
+      const o = drag.orig;
+      let dx = raw.x-drag.start.x, dy = raw.y-drag.start.y;
+      const al = alignSnap(svg._shapes, svg._sel, boxAfter(o, dx, dy));
+      dx += al.dx; dy += al.dy;
+      svg._guides = al.guides;
+      if (svg._grid && !al.guides.length){
+        const gb = boxAfter(o, dx, dy);
+        dx += Math.round(gb.x/GRID)*GRID - gb.x;
+        dy += Math.round(gb.y/GRID)*GRID - gb.y;
+      }
+      moveShape(s, o, dx, dy);
     } else if (drag.mode==="resize"){
       const o = drag.orig, k = drag.hk;
       if (s.t==="rect"){
@@ -618,7 +674,14 @@ function initCanvas(railEl){
     drag = null;
     hud.hidden = true;
     try { svg.releasePointerCapture(e.pointerId); } catch(_){}
+    svg._guides = null;
     if (mode==="pan"){ return; }
+    if (mode==="move"){ renderCanvas(svg); }
+    if (mode==="meas"){
+      const s = svg._shapes[svg._sel];
+      if (Math.hypot(s.x2-s.x1, s.y2-s.y1) < 4){ svg._shapes.pop(); svg._sel = -1; }
+      setTool("move"); renderCanvas(svg);
+    }
     if (mode==="draw"){
       const s = svg._shapes[svg._sel];
       if (s.t==="rect"){
@@ -667,7 +730,7 @@ function buildRails(){
       <img class="rail-dia" src="dia_${r.key}.png" alt="${r.name} reference">
       ${drawToolbar()}
       <div class="canvas-wrap"><svg class="draw-canvas" data-canvas viewBox="0 0 340 240"></svg></div>
-      <p class="hint">Reference above. Draw on the board: pick a shape, drag to place, drag to move, grab an edge/end to resize. Pen = freehand. <b>Ortho</b> locks to 0/45/90°, <b>Grid</b> snaps to 10, <b>Copy</b> duplicates the selection, <b>＋/－/Fit</b> zoom, and dragging empty space pans. Tap a letter box then drag a line to auto-fill its length.</p>
+      <p class="hint">Reference above. Draw on the board: pick a shape, drag to place / move, grab an edge/end to resize. <b>📏 Measure</b> — press a corner and drag to any point for the distance (snaps to corners). Moving a box shows pink guide lines when its edges/centre line up with another box, and snaps to them. <b>Ortho</b> locks 0/45/90°, <b>Grid</b> snaps to 10, <b>Copy</b> duplicates, <b>＋/－/Fit</b> zoom, drag empty space to pan. Tap a letter box then drag a line to fill its length.</p>
       <div class="dims">
         ${r.letters.map(L => `<div><label>${L} (mm)</label><input type="text" inputmode="numeric" data-dim="${L}"></div>`).join("")}
       </div>
