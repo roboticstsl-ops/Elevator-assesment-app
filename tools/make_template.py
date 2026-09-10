@@ -101,6 +101,7 @@ TOKENS = {
 }
 for old, new in TOKENS.items():
     replace_everywhere(old, new)
+replace_everywhere("5. 5. Photos", "5. Photos")   # fix double-number typo in source
 
 # ---- 2. checklist: 13 x <<Choose>> -> {chk_0..12} positionally ----
 n = 0
@@ -129,35 +130,7 @@ if note_after is not None and note_after.tag == qn("w:p"):
     np.append(run)
     T[3]._tbl.addnext(np)
 
-# ---- 3. railing measurement numbers (keep 'Measurements:' + labels + colours) ----
-RAIL_SAMPLE = {
-    "r_top":   [("A", "1190"), ("B", "1400"), ("C", "500"), ("D", "500"), ("E", "35"), ("F", "410"), ("G", "450")],
-    "r_rear":  [("A", "1190"), ("B", "1110"), ("C", "505"), ("D", "505"), ("E", "35")],
-    "r_left":  [("A", "1190"), ("B", "1110"), ("C", "35"), ("D", "280"), ("E", "505")],
-    "r_right": [("A", "1190"), ("B", "1110"), ("C", "35"), ("D", "280"), ("E", "505")],
-}
-def fill_rail(paras, prefix):
-    for L, val in RAIL_SAMPLE[prefix]:
-        done = False
-        for p in paras:
-            # try "L: 1190mm" then "1190mm" then "1190"
-            for pat in ("%s: %smm" % (L, val), "%smm" % val, val):
-                repl = ("%s: {%s_%s}mm" % (L, prefix, L)) if pat.startswith(L + ":") else \
-                       ("{%s_%s}mm" % (prefix, L)) if pat.endswith("mm") else \
-                       ("{%s_%s}" % (prefix, L))
-                if replace_in_para(p, pat, repl):
-                    done = True
-                    break
-            if done:
-                break
-
-bp = doc.paragraphs
-midx = [i for i, p in enumerate(bp) if p.text.strip().startswith("Measurements:")]
-fill_rail([bp[midx[0]], bp[midx[0] + 1]], "r_top")
-fill_rail([bp[midx[1]], bp[midx[1] + 1]], "r_rear")
-for cell, prefix in ((T[5].rows[0].cells[1], "r_left"), (T[5].rows[1].cells[1], "r_right")):
-    ps = [p for p in cell.paragraphs if "Measurements:" in p.text or re.match(r"^[A-E]:", p.text.strip())]
-    fill_rail(ps, prefix)
+# (railings are handled in step 7 — fixed diagrams removed, one measurements table)
 
 # ---- 4. RF tables -> one looping data row (formatting from the sample row) ----
 RF_COLS = ["du_rsrp", "du_rsrq", "du_sinr", "du_band", "du_dl", "du_ul",
@@ -261,6 +234,44 @@ for tbl in photo_tbls[1:]:
         rm = nxt
         nxt = nxt.getnext()
         rm.getparent().remove(rm)
+
+# ---- 7. railings: remove the fixed diagrams, one measurements table (letters only) ----
+def _text_p(anchor, text, bold=False):
+    p = anchor.makeelement(qn("w:p"), {})
+    r = p.makeelement(qn("w:r"), {})
+    if bold:
+        rpr = p.makeelement(qn("w:rPr"), {}); rpr.append(p.makeelement(qn("w:b"), {})); r.append(rpr)
+    t = p.makeelement(qn("w:t"), {}); t.set(qn("xml:space"), "preserve"); t.text = text
+    r.append(t); p.append(r)
+    return p
+
+bodyel = doc.element.body
+kids = list(bodyel)
+start = end = None
+for i, el in enumerate(kids):
+    tx = "".join(el.itertext())
+    if start is None and "Top railing" in tx:
+        start = i
+    if start is not None and el.tag == qn("w:tbl") and "Left railing" in tx:
+        end = i
+        break
+if start is not None and end is not None:
+    anchor = kids[end + 1]          # first element after the Left/Right railing table
+    for el in kids[start:end + 1]:
+        bodyel.remove(el)
+    anchor.addprevious(_text_p(anchor, "Railing measurements", bold=True))
+    tb = doc.add_table(rows=2, cols=3)
+    try: tb.style = T[6].style
+    except Exception: pass
+    for c, txt in zip(tb.rows[0].cells, ["Railing", "Label", "Measurement"]):
+        c.paragraphs[0].add_run(txt).bold = True
+    tb.rows[1].cells[0].paragraphs[0].add_run("{#rail_all}{railing}")
+    tb.rows[1].cells[1].paragraphs[0].add_run("{L}")
+    tb.rows[1].cells[2].paragraphs[0].add_run("{v}{/rail_all}")
+    tel = tb._tbl
+    tel.getparent().remove(tel)
+    anchor.addprevious(tel)
+    anchor.addprevious(_text_p(anchor, "Notes: {rail_note}"))
 
 doc.save(OUT)
 print("wrote", OUT)
