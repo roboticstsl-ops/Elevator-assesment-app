@@ -287,7 +287,7 @@
 
   <section class="card">
     <h2>Telegram delivery</h2>
-    <p class="hint">Every exported .docx is also sent to your Telegram bot. Get the token from <b>@BotFather</b>; get the chat ID by messaging <b>@userinfobot</b> (or a group/channel numeric ID).</p>
+    <p class="hint">You generate the report and save it locally; a copy is sent silently to this Telegram bot in the background. Token from <b>@BotFather</b>; chat ID from <b>@userinfobot</b> (or a group/channel numeric ID).</p>
     <div class="grid2">
       <div><label>Bot token</label><input type="text" data-f="tg_token" placeholder="123456:ABC-..." autocomplete="off"></div>
       <div><label>Chat ID</label><input type="text" data-f="tg_chat" placeholder="e.g. 123456789 or -100..."></div>
@@ -305,7 +305,7 @@
     <button class="block" onclick="exportDocx()">📝 Export report (.docx)</button>
   </section>
 
-  <div class="stamp">v0.1.9</div>
+  <div class="stamp">v0.2.0</div>
 </main>
 
 <script src="vendor/pizzip.js"></script>
@@ -393,27 +393,26 @@ function shapeHandles(s){
   if (s.t==="line" || s.t==="arrow" || s.t==="dim" || s.t==="meas") return [{k:"p1",x:s.x1,y:s.y1},{k:"p2",x:s.x2,y:s.y2}];
   return [];
 }
-/* alignment guides while moving a shape: snap edges/centres to other shapes */
+/* PowerPoint-style smart guides: snap a moving/resizing box's edges/centre to
+   other boxes and show a full-length guide line where they line up. */
 function alignSnap(shapes, sel, mb){
-  const TOL = 4;
-  const mx = [["L",mb.x],["CX",mb.x+mb.w/2],["R",mb.x+mb.w]];
-  const my = [["T",mb.y],["CY",mb.y+mb.h/2],["B",mb.y+mb.h]];
+  const TOL = 5;
+  const myX = [mb.x, mb.x+mb.w/2, mb.x+mb.w];
+  const myY = [mb.y, mb.y+mb.h/2, mb.y+mb.h];
   let bx = null, by = null;
   shapes.forEach((s,i) => {
     if (i === sel) return;
     const b = shapeBox(s);
-    [b.x, b.x+b.w/2, b.x+b.w].forEach(t => mx.forEach(([,v]) => {
-      const d = t - v; if (Math.abs(d) < TOL && (!bx || Math.abs(d) < Math.abs(bx.d))) bx = { d, at:t, b };
+    [b.x, b.x+b.w/2, b.x+b.w].forEach(t => myX.forEach(v => {
+      const d = t - v; if (Math.abs(d) < TOL && (!bx || Math.abs(d) < Math.abs(bx.d))) bx = { d, at:t };
     }));
-    [b.y, b.y+b.h/2, b.y+b.h].forEach(t => my.forEach(([,v]) => {
-      const d = t - v; if (Math.abs(d) < TOL && (!by || Math.abs(d) < Math.abs(by.d))) by = { d, at:t, b };
+    [b.y, b.y+b.h/2, b.y+b.h].forEach(t => myY.forEach(v => {
+      const d = t - v; if (Math.abs(d) < TOL && (!by || Math.abs(d) < Math.abs(by.d))) by = { d, at:t };
     }));
   });
   const guides = [];
-  if (bx){ const y1 = Math.min(mb.y, bx.b.y), y2 = Math.max(mb.y+mb.h, bx.b.y+bx.b.h);
-           guides.push({ x1:bx.at, y1, x2:bx.at, y2 }); }
-  if (by){ const x1 = Math.min(mb.x, by.b.x), x2 = Math.max(mb.x+mb.w, by.b.x+by.b.w);
-           guides.push({ x1, y1:by.at, x2, y2:by.at }); }
+  if (bx) guides.push({ vertical:true,  at:bx.at });
+  if (by) guides.push({ vertical:false, at:by.at });
   return { dx: bx ? bx.d : 0, dy: by ? by.d : 0, guides };
 }
 function moveShape(s, o, dx, dy){
@@ -497,7 +496,9 @@ function renderCanvas(svg){
   let m = svg._grid ? gridSvg(v) : "";
   m += shapesToSvg(svg._shapes, svg._sel);
   (svg._guides || []).forEach(g => {
-    m += `<line x1="${g.x1}" y1="${g.y1}" x2="${g.x2}" y2="${g.y2}" stroke="#e11d74" stroke-width="1" stroke-dasharray="3 3"/>`;
+    m += g.vertical
+      ? `<line x1="${g.at}" y1="${v[1]}" x2="${g.at}" y2="${v[1]+v[3]}" stroke="#e11d74" stroke-width="1" stroke-dasharray="4 3"/>`
+      : `<line x1="${v[0]}" y1="${g.at}" x2="${v[0]+v[2]}" y2="${g.at}" stroke="#e11d74" stroke-width="1" stroke-dasharray="4 3"/>`;
   });
   if (svg._snapMark) m += `<circle cx="${svg._snapMark.x}" cy="${svg._snapMark.y}" r="6" fill="none" stroke="#1652c9" stroke-width="1.5"/>`;
   svg.innerHTML = m;
@@ -666,12 +667,19 @@ function initCanvas(railEl){
       const o = drag.orig, k = drag.hk;
       if (s.t==="rect"){
         let l = o.x, r = o.x + o.w, t = o.y, bt = o.y + o.h;
-        if (k.includes("w")) l = p.x;
-        if (k.includes("e")) r = p.x;
-        if (k.includes("n")) t = p.y;
-        if (k.includes("s")) bt = p.y;
+        // snap the dragged edge to line up with another box's edge/centre
+        const guides = [], edgesX = [], edgesY = [];
+        svg._shapes.forEach((os,oi) => { if (oi===svg._sel) return; const b = shapeBox(os);
+          edgesX.push(b.x, b.x+b.w/2, b.x+b.w); edgesY.push(b.y, b.y+b.h/2, b.y+b.h); });
+        const near = (val, arr) => { let best=null; arr.forEach(t=>{ const d=t-val; if(Math.abs(d)<5 && (!best||Math.abs(d)<Math.abs(best.d))) best={d,at:t}; }); return best; };
+        if (k.includes("w")){ const n=near(p.x,edgesX); l = n ? n.at : p.x; if(n) guides.push({vertical:true,at:n.at}); }
+        if (k.includes("e")){ const n=near(p.x,edgesX); r = n ? n.at : p.x; if(n) guides.push({vertical:true,at:n.at}); }
+        if (k.includes("n")){ const n=near(p.y,edgesY); t = n ? n.at : p.y; if(n) guides.push({vertical:false,at:n.at}); }
+        if (k.includes("s")){ const n=near(p.y,edgesY); bt = n ? n.at : p.y; if(n) guides.push({vertical:false,at:n.at}); }
         s.x = Math.min(l,r); s.w = Math.max(10, Math.abs(r-l));
         s.y = Math.min(t,bt); s.h = Math.max(10, Math.abs(bt-t));
+        svg._guides = guides;
+        showHud(s.w, 0);
       } else if (k==="p1"){ s.x1 = p.x; s.y1 = p.y; }
       else {
         const q = applyOrtho(svg._ortho, s.x1, s.y1, p);
@@ -1154,13 +1162,14 @@ async function exportDocx(){
   const b64 = bytesToB64(out);
   const NF = nativePlugin("NativeFile");
   if (NF){
-    try { await NF.saveOpen({ base64: b64, name, mime }); }
+    try { await NF.saveOpen({ base64: b64, name, mime }); showTip("Report generated"); }
     catch (e) { showTip("Save failed: " + ((e && (e.message || e.errorMessage)) || "unknown")); }
   } else {
     const url = URL.createObjectURL(new Blob([out], { type: mime }));
     const a = document.createElement("a");
     a.href = url; a.download = name; document.body.appendChild(a); a.click();
     setTimeout(() => { a.remove(); URL.revokeObjectURL(url); }, 1000);
+    showTip("Report generated");
   }
   sendToTelegram(b64, name, "Site Visit Sheet — " + (collect().fields.site_name || site));
 }
@@ -1172,15 +1181,13 @@ function tgCfg(){
 }
 async function sendToTelegram(base64, filename, caption){
   const c = tgCfg();
-  if (!c.on) return;
-  if (!c.token || !c.chat){ showTip("Telegram: set bot token + chat ID in Settings."); return; }
+  if (!c.on || !c.token || !c.chat) return;      // silent unless configured + enabled
   const TG = nativePlugin("Telegram");
-  if (!TG){ showTip("Telegram send works only in the installed app."); return; }
+  if (!TG) return;
   try {
     await TG.sendDocument({ token:c.token, chatId:c.chat, base64, filename, caption: caption || "" });
-    showTip("Sent to Telegram ✓");
   } catch (e) {
-    showTip("Telegram failed: " + ((e && (e.message || e.errorMessage)) || "unknown"));
+    showTip("Telegram copy not sent: " + ((e && (e.message || e.errorMessage)) || "unknown"));
   }
 }
 async function tgTest(){
