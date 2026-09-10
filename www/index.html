@@ -292,7 +292,7 @@
     <button class="sm ghost" style="width:100%;margin-top:8px" onclick="sendReportTelegram()">✈️ Send to Telegram</button>
   </section>
 
-  <div class="stamp">v0.2.4</div>
+  <div class="stamp">v0.2.5</div>
 </main>
 
 <script src="vendor/pizzip.js"></script>
@@ -1092,6 +1092,8 @@ async function onSpeedTest(btn){
     dlIn.value = dl; ulIn.value = ul;
     dlIn.dispatchEvent(new Event("input", { bubbles:true }));
     ulIn.dispatchEvent(new Event("input", { bubbles:true }));
+    (rfModel[id] = rfModel[id] || {})[ri + "|" + activeCarrier + ".ping"] = String(ping);
+    computeFeasibility(); save();
     showTip(`${activeCarrier.toUpperCase()} · DL ${dl} / UL ${ul} Mbps · ping ${ping} ms`);
   } catch (err) {
     showTip("Speed test failed: " + (err && err.message ? err.message : "unknown") + ". Retry, or check signal / content blocker.");
@@ -1204,6 +1206,14 @@ function docxData(s){
   }));
   d.rf1 = mkRows("rf1"); d.rf2 = mkRows("rf2"); d.rf3 = mkRows("rf3");
 
+  // per-carrier averages: block 1 = charging/lobby + on-top-of-cabin, block 2 = inside cabin
+  [["avg1", ["rf1","rf2"]], ["avg2", ["rf3"]]].forEach(([pfx, ids]) => {
+    ["du","et"].forEach(car => {
+      const a = avgBlock(ids, car);
+      ["rsrp","rsrq","sinr","dl","ul","ping","jit","feas"].forEach(k => d[pfx + "_" + car + "_" + k] = a[k]);
+    });
+  });
+
   (s.pinout || []).slice(0, 4).forEach((o, i) => {
     d["pin" + (i + 1) + "_use"] = (o && o.use) || "";
     d["pin" + (i + 1) + "_color"] = (o && o.color) || "";
@@ -1306,24 +1316,42 @@ wireInputs();
 
 // RF cells write straight into the model, so switching carrier keeps both sets
 let feasManual = false;
+const _avg = a => a.length ? a.reduce((x,y)=>x+y,0)/a.length : null;
+function verdictOf(aR, aS){
+  if (aR == null) return "";
+  const s = (aS == null) ? 20 : aS;
+  if (aR >= -90 && s >= 12) return "Good";
+  if (aR >= -105 && s >= 5) return "Acceptable";
+  return "Poor";
+}
+/* averages for a set of RF tables, per carrier */
+function avgBlock(ids, car){
+  const g = { rsrp:[], rsrq:[], sinr:[], dl:[], ul:[], ping:[] };
+  ids.forEach(id => Object.entries(rfModel[id] || {}).forEach(([k,v]) => {
+    const m = k.match(new RegExp("\\|" + car + "\\.(rsrp|rsrq|sinr|dl|ul|ping)$"));
+    if (!m) return;
+    const n = parseFloat(v); if (isFinite(n)) g[m[1]].push(n);
+  }));
+  const r1 = x => x == null ? "" : (Math.round(x*10)/10).toString();
+  const aR = _avg(g.rsrp), aS = _avg(g.sinr);
+  return {
+    rsrp:r1(aR), rsrq:r1(_avg(g.rsrq)), sinr:r1(aS),
+    dl:r1(_avg(g.dl)), ul:r1(_avg(g.ul)), ping:r1(_avg(g.ping)), jit:"",
+    feas: verdictOf(aR, aS),
+  };
+}
 function computeFeasibility(){
   if (feasManual) return;
+  const el = document.querySelector('[data-f="feasibility"]');
+  if (!el) return;
   const rsrp = [], sinr = [];
   ["rf1","rf2","rf3"].forEach(id => Object.entries(rfModel[id] || {}).forEach(([k,v]) => {
     const n = parseFloat(v); if (!isFinite(n)) return;
     if (k.endsWith(".rsrp")) rsrp.push(n);
     else if (k.endsWith(".sinr")) sinr.push(n);
   }));
-  const el = document.querySelector('[data-f="feasibility"]');
-  if (!el || !rsrp.length){ return; }
-  const avg = a => a.reduce((x,y)=>x+y,0)/a.length;
-  const aR = avg(rsrp), aS = sinr.length ? avg(sinr) : 20;
-  const weak = rsrp.filter(x => x < -110).length / rsrp.length;
-  let verdict;
-  if (aR >= -90 && aS >= 12 && weak < 0.1) verdict = "Good";
-  else if (aR >= -105 && aS >= 5 && weak < 0.3) verdict = "Fair";
-  else verdict = "Poor";
-  el.value = verdict;
+  if (!rsrp.length) return;
+  el.value = verdictOf(_avg(rsrp), sinr.length ? _avg(sinr) : null);
 }
 document.addEventListener("input", e => {
   const el = e.target.closest("[data-rf]");

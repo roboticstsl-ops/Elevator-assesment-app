@@ -182,6 +182,30 @@ for tbl, tag in ((T[7], "rf1"), (T[8], "rf2"), (T[9], "rf3")):
             cell_set(cell, newtxt)
     del_rows_from(tbl, 3)
 
+# ---- 4b. per-carrier averages tables (like the latest report) ----
+AVG_HDR = ["Operator", "Avg RSRP (dBm)", "Avg RSRQ (dB)", "Avg SINR (dB)",
+           "Avg DL (Mbps)", "Avg UL (Mbps)", "Avg Ping (ms)", "Avg Jitter (ms)", "Feasibility"]
+AVG_KEYS = ["rsrp", "rsrq", "sinr", "dl", "ul", "ping", "jit", "feas"]
+
+def add_avg_table(after_tbl, prefix):
+    t = doc.add_table(rows=3, cols=9)
+    try: t.style = T[6].style
+    except Exception: pass
+    for c, txt in zip(t.rows[0].cells, AVG_HDR):
+        r = c.paragraphs[0].add_run(txt); r.bold = True
+    for ri, (label, car) in enumerate([("Carrier 1 - du", "du"), ("Carrier 2 - e&", "et")], start=1):
+        t.rows[ri].cells[0].paragraphs[0].add_run(label)
+        for ci, key in enumerate(AVG_KEYS, start=1):
+            t.rows[ri].cells[ci].paragraphs[0].add_run("{%s_%s_%s}" % (prefix, car, key))
+    tbl_el = t._tbl
+    tbl_el.getparent().remove(tbl_el)
+    after_tbl._tbl.addnext(tbl_el)
+    spacer = tbl_el.makeelement(qn("w:p"), {})
+    tbl_el.addnext(spacer)
+
+add_avg_table(T[9], "avg2")   # inside cabin block -> after 3.3
+add_avg_table(T[6], "avg1")   # charging/lobby + on-cabin block -> after network table
+
 # ---- 5. pinout USE / Color (rows 3..6, cols 2..3) ----
 for i, row in enumerate(T[10].rows[3:7], start=1):
     if not any(row.cells[2].paragraphs and replace_in_para(p, "", "") for p in []):
