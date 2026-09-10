@@ -234,7 +234,7 @@
       <div><label>Network(s) Tested</label><input type="text" data-f="networks" value="du, e&"></div>
       <div><label>App</label><input type="text" data-f="app_used"></div>
       <div><label>Survey Point</label><input type="text" data-f="survey_point"></div>
-      <div><label>Overall Feasibility</label><input type="text" data-f="feasibility"></div>
+      <div><label>Overall Feasibility (auto from readings — editable)</label><input type="text" data-f="feasibility"></div>
     </div>
 
     <label>Carrier being measured</label>
@@ -292,7 +292,7 @@
     <button class="sm ghost" style="width:100%;margin-top:8px" onclick="sendReportTelegram()">✈️ Send to Telegram</button>
   </section>
 
-  <div class="stamp">v0.2.2</div>
+  <div class="stamp">v0.2.3</div>
 </main>
 
 <script src="vendor/pizzip.js"></script>
@@ -1217,13 +1217,40 @@ if (saved) { restore(saved); } else { renderAllRf(); }
 wireInputs();
 
 // RF cells write straight into the model, so switching carrier keeps both sets
+let feasManual = false;
+function computeFeasibility(){
+  if (feasManual) return;
+  const rsrp = [], sinr = [];
+  ["rf1","rf2","rf3"].forEach(id => Object.entries(rfModel[id] || {}).forEach(([k,v]) => {
+    const n = parseFloat(v); if (!isFinite(n)) return;
+    if (k.endsWith(".rsrp")) rsrp.push(n);
+    else if (k.endsWith(".sinr")) sinr.push(n);
+  }));
+  const el = document.querySelector('[data-f="feasibility"]');
+  if (!el || !rsrp.length){ return; }
+  const avg = a => a.reduce((x,y)=>x+y,0)/a.length;
+  const aR = avg(rsrp), aS = sinr.length ? avg(sinr) : 20;
+  const weak = rsrp.filter(x => x < -110).length / rsrp.length;
+  let verdict;
+  if (aR >= -90 && aS >= 12 && weak < 0.1) verdict = "Good";
+  else if (aR >= -105 && aS >= 5 && weak < 0.3) verdict = "Fair";
+  else verdict = "Poor";
+  el.value = verdict;
+}
 document.addEventListener("input", e => {
   const el = e.target.closest("[data-rf]");
-  if (!el) return;
-  const id = el.dataset.rf;
-  (rfModel[id] = rfModel[id] || {})[el.dataset.ri + "|" + el.dataset.col] = el.value;
-  save();
+  if (el){
+    const id = el.dataset.rf;
+    (rfModel[id] = rfModel[id] || {})[el.dataset.ri + "|" + el.dataset.col] = el.value;
+    computeFeasibility();
+    save();
+    return;
+  }
+  if (e.target.matches('[data-f="feasibility"]')){ feasManual = true; }
 });
+{ const fe = document.querySelector('[data-f="feasibility"]');
+  feasManual = !!(fe && fe.value.trim());
+  computeFeasibility(); }
 document.querySelectorAll("[data-carrier]").forEach(b => b.addEventListener("click", () => { setCarrier(b.dataset.carrier); save(); }));
 document.addEventListener("click", e => {
   const sig = e.target.closest(".sigread");

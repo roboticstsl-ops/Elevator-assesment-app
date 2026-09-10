@@ -1,11 +1,12 @@
 #!/usr/bin/env python3
-"""Turn the standard Site Visit Sheet .docx into a docxtemplater template.
+"""Build the docxtemplater template from the client's <<token>> standard sheet.
 
-Input : DSO Tower 6_Templet.docx  (the standard, with the client's <<tokens>>)
-Output: apk-build/www/template.docx  with {placeholders} + row loops.
+Non-destructive: replaces sample text INSIDE existing runs so every font, colour,
+tab stop, row height and table style from the original is kept. Only structural
+work (loop rows for RF / photos) rewrites elements.
 
-The client's <<tokens>> mark editable spots; we replace them (and the fixed
-sample data) positionally with docxtemplater {tags}.
+Input : DSO Tower 6_Templet.docx
+Output: apk-build/www/template.docx
 """
 import sys, re, copy
 from docx import Document
@@ -18,24 +19,61 @@ doc = Document(SRC)
 T = doc.tables
 
 
-def set_cell(cell, text):
+def replace_in_para(p, old, new):
+    """Replace first occurrence of `old` across p's runs, keeping the first
+    spanned run's formatting. Returns True if something was replaced."""
+    runs = p.runs
+    if not runs:
+        return False
+    full = "".join(r.text for r in runs)
+    idx = full.find(old)
+    if idx < 0:
+        return False
+    end = idx + len(old)
+    # map char ranges to runs
+    pos = 0
+    first = None
+    for ri, r in enumerate(runs):
+        rlen = len(r.text)
+        rstart, rend = pos, pos + rlen
+        if rend <= idx or rstart >= end:
+            pos = rend
+            continue
+        local_s = max(0, idx - rstart)
+        local_e = min(rlen, end - rstart)
+        if first is None:
+            first = ri
+            r.text = r.text[:local_s] + new + r.text[local_e:]
+        else:
+            r.text = r.text[:local_s] + r.text[local_e:]
+        pos = rend
+    return first is not None
+
+
+def replace_everywhere(old, new, limit=None):
+    n = 0
+    for p in doc.paragraphs:
+        while replace_in_para(p, old, new):
+            n += 1
+            if limit and n >= limit:
+                return n
+    for t in doc.tables:
+        for row in t.rows:
+            for c in row.cells:
+                for p in c.paragraphs:
+                    while replace_in_para(p, old, new):
+                        n += 1
+                        if limit and n >= limit:
+                            return n
+    return n
+
+
+def cell_set(cell, text):
+    """For originally-blank cells only: put one run with the paragraph's style."""
     p = cell.paragraphs[0]
-    runs = p.runs
-    if runs:
-        runs[0].text = text
-        for r in runs[1:]:
-            r.text = ""
-    else:
-        p.add_run(text)
-    for extra in cell.paragraphs[1:]:
-        extra._element.getparent().remove(extra._element)
-
-
-def set_para(p, text):
-    runs = p.runs
-    if runs:
-        runs[0].text = text
-        for r in runs[1:]:
+    if p.runs:
+        p.runs[0].text = text
+        for r in p.runs[1:]:
             r.text = ""
     else:
         p.add_run(text)
@@ -46,106 +84,131 @@ def del_rows_from(tbl, start):
         tbl._tbl.remove(row._tr)
 
 
-# ---- 0: header ----
-for c, ph in zip(T[0].rows[1].cells, ["{doc_ref}", "{prepared_by}", "{date}", "{version}"]):
-    set_cell(c, ph)
+# ---- 1. plain <<token>> -> {tag} (formatting preserved in-run) ----
+TOKENS = {
+    "<<DocumentRef >>": "{doc_ref}", "<<DocumentRef>>": "{doc_ref}",
+    "<<PreparedBy>>": "{prepared_by}", "<<Date>>": "{date}", "<<Version>>": "{version}",
+    "<<ProjectActivity>>": "{project}", "<<SiteName>>": "{site_name}",
+    "<<Client>>": "{client}", "<<FullAddress>>": "{address}", "<<GoogleMapPin>>": "{maps_link}",
+    "<<ElevatorOEM>>": "{elev_oem}", "<<ElevatorModelSeries>>": "{elev_model}",
+    "<<ElevatorID>>": "{elev_id}", "<<ElevatorMaintenanceCompany>>": "{elev_maint}",
+    "<<AvailablePlugPoint(s)OnTopOfTheElevator>>": "{plug_points}",
+    "<<Note>>": "{rail_note}",
+    "<<du, e&>>": "{networks}", "<<Survey Point>>": "{survey_point}",
+    "<<OverallFeasibility>>": "{feasibility}",
+    "<<ButtonModuleSKU>>": "{btn_sku}",
+    "<<ConnectorsUSedOnTheButtonModule>>": "{btn_connectors}",
+}
+for old, new in TOKENS.items():
+    replace_everywhere(old, new)
 
-# ---- 1: project block ----
-for r, ph in zip(T[1].rows, ["{project}", "{site_name}", "{client}", "{address}", "{maps_link}"]):
-    set_cell(r.cells[1], ph)
-
-# ---- 2 + 3: 1.1 checklist ----
+# ---- 2. checklist: 13 x <<Choose>> -> {chk_0..12} positionally ----
 n = 0
 for tbl in (T[2], T[3]):
     for row in tbl.rows:
-        set_cell(row.cells[1], "{chk_%d}" % n)
-        n += 1
+        for p in row.cells[1].paragraphs:
+            if replace_in_para(p, "<<Choose>>", "{chk_%d}" % n):
+                n += 1
+                break
+        else:
+            # blank value cell fallback
+            cell_set(row.cells[1], "{chk_%d}" % n); n += 1
 assert n == 13, n
 
-# checklist free-text note: add a paragraph right after checklist table #3
-note_p = copy.deepcopy(T[3]._tbl.getnext())
-if note_p is not None and note_p.tag == qn("w:p"):
-    for rr in list(note_p.findall(qn("w:r"))):
-        note_p.remove(rr)
-    run = note_p.makeelement(qn("w:r"), {})
-    tn = note_p.makeelement(qn("w:t"), {})
+# checklist free-text note: append a paragraph after checklist table #3
+note_after = T[3]._tbl.getnext()
+if note_after is not None and note_after.tag == qn("w:p"):
+    np = copy.deepcopy(note_after)
+    for rr in list(np.findall(qn("w:r"))):
+        np.remove(rr)
+    run = np.makeelement(qn("w:r"), {})
+    tn = np.makeelement(qn("w:t"), {})
     tn.set(qn("xml:space"), "preserve")
     tn.text = "{checklist_note}"
     run.append(tn)
-    note_p.append(run)
-    T[3]._tbl.addnext(note_p)
+    np.append(run)
+    T[3]._tbl.addnext(np)
 
-# ---- 4: Technical Findings - Elevator ----
-for r, ph in zip(T[4].rows, ["{elev_oem}", "{elev_model}", "{elev_id}", "{elev_maint}", "{plug_points}"]):
-    set_cell(r.cells[1], ph)
-
-# ---- railing measurement lines (numbers only; diagram untouched) ----
-def fill_measure(paras, letters, prefix):
-    tag = lambda L: "%s: {%s_%s}mm" % (L, prefix, L)
-    if len(letters) > 4 and len(paras) > 1:
-        set_para(paras[0], "Measurements:\t" + "\t".join(tag(L) for L in letters[:4]))
-        set_para(paras[1], "\t".join(tag(L) for L in letters[4:]))
-    else:
-        set_para(paras[0], "Measurements:\t" + "\t".join(tag(L) for L in letters))
-        for p in paras[1:]:
-            if re.match(r"^[A-G]:", p.text.strip()):
-                set_para(p, "")
+# ---- 3. railing measurement numbers (keep 'Measurements:' + labels + colours) ----
+RAIL_SAMPLE = {
+    "r_top":   [("A", "1190"), ("B", "1400"), ("C", "500"), ("D", "500"), ("E", "35"), ("F", "410"), ("G", "450")],
+    "r_rear":  [("A", "1190"), ("B", "1110"), ("C", "505"), ("D", "505"), ("E", "35")],
+    "r_left":  [("A", "1190"), ("B", "1110"), ("C", "35"), ("D", "280"), ("E", "505")],
+    "r_right": [("A", "1190"), ("B", "1110"), ("C", "35"), ("D", "280"), ("E", "505")],
+}
+def fill_rail(paras, prefix):
+    for L, val in RAIL_SAMPLE[prefix]:
+        done = False
+        for p in paras:
+            # try "L: 1190mm" then "1190mm" then "1190"
+            for pat in ("%s: %smm" % (L, val), "%smm" % val, val):
+                repl = ("%s: {%s_%s}mm" % (L, prefix, L)) if pat.startswith(L + ":") else \
+                       ("{%s_%s}mm" % (prefix, L)) if pat.endswith("mm") else \
+                       ("{%s_%s}" % (prefix, L))
+                if replace_in_para(p, pat, repl):
+                    done = True
+                    break
+            if done:
+                break
 
 bp = doc.paragraphs
 midx = [i for i, p in enumerate(bp) if p.text.strip().startswith("Measurements:")]
-fill_measure([bp[midx[0]], bp[midx[0] + 1]], list("ABCDEFG"), "r_top")
-fill_measure([bp[midx[1]], bp[midx[1] + 1]], list("ABCDE"), "r_rear")
+fill_rail([bp[midx[0]], bp[midx[0] + 1]], "r_top")
+fill_rail([bp[midx[1]], bp[midx[1] + 1]], "r_rear")
+for cell, prefix in ((T[5].rows[0].cells[1], "r_left"), (T[5].rows[1].cells[1], "r_right")):
+    ps = [p for p in cell.paragraphs if "Measurements:" in p.text or re.match(r"^[A-E]:", p.text.strip())]
+    fill_rail(ps, prefix)
 
-for cell, letters, prefix in ((T[5].rows[0].cells[1], list("ABCDE"), "r_left"),
-                              (T[5].rows[1].cells[1], list("ABCDE"), "r_right")):
-    ps = list(cell.paragraphs)
-    for i, p in enumerate(ps):
-        if p.text.strip().startswith("Measurements:"):
-            fill_measure(ps[i:i + 2], letters, prefix)
-            break
-set_cell(T[5].rows[2].cells[1], "{rail_note}")
-
-# ---- 6: Network / App / Feasibility ----
-set_cell(T[6].rows[0].cells[1], "{networks}")
-set_cell(T[6].rows[1].cells[1], "{survey_point}")
-set_cell(T[6].rows[2].cells[1], "{feasibility}")
-
-# ---- 7/8/9: RF tables -> single looping data row ----
+# ---- 4. RF tables -> one looping data row (formatting from the sample row) ----
 RF_COLS = ["du_rsrp", "du_rsrq", "du_sinr", "du_band", "du_dl", "du_ul",
            "et_rsrp", "et_rsrq", "et_sinr", "et_band", "et_dl", "et_ul"]
+RF_SAMPLE = {
+    "rf1": ["Main lobby / reception", "-68", "-5", "30", "B3", "94.4", "53.4", "-64", "-3", "30", "B8", "203", "5.91"],
+    "rf2": ["Ground", "-67", "-4", "29", "B3", "114", "52.1", "-69", "-4", "28", "B8", "23.5", "3.82"],
+    "rf3": ["Ground", "-86", "-4", "16", "B3", "111", "13.6", "-97", "-4", "26", "B8", "73.4", "5.32"],
+}
 for tbl, tag in ((T[7], "rf1"), (T[8], "rf2"), (T[9], "rf3")):
     row = tbl.rows[2]
-    set_cell(row.cells[0], "{#%s}{loc}" % tag)
+    samp = RF_SAMPLE[tag]
+    # loc cell
+    if not any(replace_in_para(p, samp[0], "{#%s}{loc}" % tag) for p in row.cells[0].paragraphs):
+        cell_set(row.cells[0], "{#%s}{loc}" % tag)
+    # 12 metric cells
     for ci, key in enumerate(RF_COLS, start=1):
-        set_cell(row.cells[ci], "{%s}" % key)
-    set_cell(row.cells[12], "{et_ul}{/%s}" % tag)
+        val = samp[ci]
+        newtxt = "{%s}" % key + ("{/%s}" % tag if ci == 12 else "")
+        cell = row.cells[ci]
+        if not any(replace_in_para(p, val, newtxt) for p in cell.paragraphs):
+            cell_set(cell, newtxt)
     del_rows_from(tbl, 3)
 
-# ---- 10: Integration + pinout ----
-set_cell(T[10].rows[0].cells[1], "{btn_sku}")
-set_cell(T[10].rows[1].cells[1], "{btn_connectors}")
+# ---- 5. pinout USE / Color (rows 3..6, cols 2..3) ----
 for i, row in enumerate(T[10].rows[3:7], start=1):
-    set_cell(row.cells[2], "{pin%d_use}" % i)
-    set_cell(row.cells[3], "{pin%d_color}" % i)
+    if not any(row.cells[2].paragraphs and replace_in_para(p, "", "") for p in []):
+        pass
+    cell_set(row.cells[2], "{pin%d_use}" % i)
+    # keep original colour word, but make it a placeholder so the app can override
+    cur = row.cells[3].text.strip()
+    if not (cur and replace_in_para(row.cells[3].paragraphs[0], cur, "{pin%d_color}" % i)):
+        cell_set(row.cells[3], "{pin%d_color}" % i)
 
-# ---- 11..15: photo pages -> one looping block ----
+# ---- 6. photo pages -> one looping block, page break per photo ----
 photo_tbls = T[11:16]
 first = photo_tbls[0]
-set_cell(first.rows[1].cells[0], "{p_desc}")
-set_cell(first.rows[1].cells[1], "{p_file}")
+cell_set(first.rows[1].cells[0], "{p_desc}")
+cell_set(first.rows[1].cells[1], "{p_file}")
 del_rows_from(first, 2)
 
+# page break before each generated photo table
+pPr = first.rows[0].cells[0].paragraphs[0]._p.get_or_add_pPr()
+if pPr.find(qn("w:pageBreakBefore")) is None:
+    pPr.append(pPr.makeelement(qn("w:pageBreakBefore"), {}))
 
-def text_para(model_p, text, page_break=False):
-    p = copy.deepcopy(model_p)
+model = first._tbl.getprevious()
+def tag_para(text):
+    p = copy.deepcopy(model)
     for r in list(p.findall(qn("w:r"))):
         p.remove(r)
-    if page_break:
-        br_r = p.makeelement(qn("w:r"), {})
-        br = p.makeelement(qn("w:br"), {})
-        br.set(qn("w:type"), "page")
-        br_r.append(br)
-        p.append(br_r)
     run = p.makeelement(qn("w:r"), {})
     tn = p.makeelement(qn("w:t"), {})
     tn.set(qn("xml:space"), "preserve")
@@ -153,11 +216,8 @@ def text_para(model_p, text, page_break=False):
     run.append(tn)
     p.append(run)
     return p
-
-
-model = first._tbl.getprevious()
-first._tbl.addprevious(text_para(model, "{#photos}", page_break=True))
-first._tbl.addnext(text_para(model, "{/photos}"))
+first._tbl.addprevious(tag_para("{#photos}"))
+first._tbl.addnext(tag_para("{/photos}"))
 
 for tbl in photo_tbls[1:]:
     nxt = tbl._tbl.getnext()
