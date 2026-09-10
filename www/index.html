@@ -292,7 +292,7 @@
     <button class="sm ghost" style="width:100%;margin-top:8px" onclick="sendReportTelegram()">✈️ Send to Telegram</button>
   </section>
 
-  <div class="stamp">v0.2.3</div>
+  <div class="stamp">v0.2.4</div>
 </main>
 
 <script src="vendor/pizzip.js"></script>
@@ -340,6 +340,7 @@ function drawToolbar(){
       `<span class="arm" data-arm></span>` +
     `</div>` +
     `<div class="draw-tools cad">` +
+      `<button type="button" data-act="smart" class="on">✨ Smart</button>` +
       `<button type="button" data-act="grid">▦ Grid</button>` +
       `<button type="button" data-act="ortho" class="on">⊾ Ortho</button>` +
       `<button type="button" data-act="copy">⧉ Copy</button>` +
@@ -360,6 +361,65 @@ function applyOrtho(on, ax, ay, p){
   let a = Math.atan2(dy,dx);
   a = Math.round(a/(Math.PI/4))*(Math.PI/4);      // nearest 45°
   return { x:ax + len*Math.cos(a), y:ay + len*Math.sin(a) };
+}
+/* ---- freehand shape recognition ---- */
+function _perp(p, x1,y1,x2,y2){
+  const dx=x2-x1, dy=y2-y1, L=Math.hypot(dx,dy)||1;
+  return Math.abs((p[0]-x1)*dy - (p[1]-y1)*dx)/L;
+}
+function _rdp(pts, eps){
+  if (pts.length < 3) return pts.slice();
+  const a = pts[0], b = pts[pts.length-1];
+  let dmax = 0, idx = 0;
+  for (let i=1;i<pts.length-1;i++){
+    const d = _perp(pts[i], a[0],a[1], b[0],b[1]);
+    if (d > dmax){ dmax = d; idx = i; }
+  }
+  if (dmax > eps){
+    const l = _rdp(pts.slice(0, idx+1), eps);
+    const r = _rdp(pts.slice(idx), eps);
+    return l.slice(0, -1).concat(r);
+  }
+  return [a, b];
+}
+function _len(d){ let L=0; for (let i=1;i<d.length;i++) L += Math.hypot(d[i][0]-d[i-1][0], d[i][1]-d[i-1][1]); return L; }
+function recognizeStroke(d){
+  if (!d || d.length < 4) return null;
+  const xs = d.map(p=>p[0]), ys = d.map(p=>p[1]);
+  const bx = Math.min(...xs), by = Math.min(...ys);
+  const bw = Math.max(...xs) - bx, bh = Math.max(...ys) - by;
+  const diag = Math.hypot(bw, bh) || 1;
+  const s = _rdp(d, diag * 0.07);
+  const start = d[0], end = d[d.length-1];
+  const chord = Math.hypot(end[0]-start[0], end[1]-start[1]);
+  const closed = chord < diag * 0.25;
+  const pl = _len(d);
+  // straight line
+  if (s.length <= 2 && chord > 12 && pl / Math.max(chord,1) < 1.4)
+    return { t:"line", x1:start[0], y1:start[1], x2:end[0], y2:end[1] };
+  // rectangle (closed loop that fills a box)
+  if (closed && s.length >= 4 && s.length <= 8 && bw > 14 && bh > 14 &&
+      pl < 2*(bw+bh) * 1.6)
+    return { t:"rect", x:bx, y:by, w:bw, h:bh };
+  // dimension crank  /‾\  : open, 3–5 corners, one dominant middle leg
+  if (!closed && s.length >= 3 && s.length <= 6){
+    let best = 0, bi = 1;
+    for (let i=1;i<s.length;i++){
+      const L = Math.hypot(s[i][0]-s[i-1][0], s[i][1]-s[i-1][1]);
+      if (L > best){ best = L; bi = i; }
+    }
+    if (best > 20){
+      const a = s[bi-1], b = s[bi];
+      return { t:"dim", x1:a[0], y1:a[1], x2:b[0], y2:b[1] };
+    }
+  }
+  return null;
+}
+function nextDimLetter(shapes){
+  const used = shapes.filter(s => s.t === "dim").map(s => s.label);
+  let c = 65;
+  while (used.indexOf(String.fromCharCode(c)) >= 0 && c < 91) c++;
+  return String.fromCharCode(c);
 }
 function shapeBox(s){
   if (s.t==="rect") return { x:Math.min(s.x,s.x+s.w), y:Math.min(s.y,s.y+s.h), w:Math.abs(s.w), h:Math.abs(s.h) };
@@ -494,7 +554,7 @@ function initCanvas(railEl){
   const svg = railEl.querySelector("[data-canvas]");
   const labelIn = railEl.querySelector("[data-label]");
   svg._shapes = []; svg._tool = "move"; svg._sel = -1; svg._hist = [];
-  svg._grid = false; svg._ortho = true; svg._vb = [0,0,340,240];
+  svg._grid = false; svg._ortho = true; svg._smart = true; svg._vb = [0,0,340,240];
   let drag = null;
   const armSpan = railEl.querySelector("[data-arm]");
   const hud = document.createElement("div");
@@ -532,6 +592,8 @@ function initCanvas(railEl){
       if (svg._sel >= 0){ snap(); svg._shapes.splice(svg._sel,1); svg._sel = -1; renderCanvas(svg); save(); }
     } else if (act === "clear"){
       if (svg._shapes.length){ snap(); svg._shapes = []; svg._sel = -1; renderCanvas(svg); save(); }
+    } else if (act === "smart"){
+      svg._smart = !svg._smart; ab.classList.toggle("on", svg._smart);
     } else if (act === "grid"){
       svg._grid = !svg._grid; ab.classList.toggle("on", svg._grid); renderCanvas(svg);
     } else if (act === "ortho"){
@@ -717,6 +779,32 @@ function initCanvas(railEl){
         if (inp){ inp.value = Math.round(Math.hypot(s.x2-s.x1, s.y2-s.y1)); inp.dispatchEvent(new Event("input", { bubbles:true })); }
       }
     }
+    if (mode==="pen"){
+      const s = svg._shapes[svg._sel];
+      if (s && s.t === "path" && svg._smart){
+        const rec = recognizeStroke(s.d);
+        if (rec){
+          if (rec.t === "line" || rec.t === "dim"){
+            const p1 = snapPoint(svg._shapes, { x:rec.x1, y:rec.y1 }, svg._sel);
+            const p2 = snapPoint(svg._shapes, { x:rec.x2, y:rec.y2 }, svg._sel);
+            rec.x1 = p1.x; rec.y1 = p1.y; rec.x2 = p2.x; rec.y2 = p2.y;
+            if (rec.t === "line" && svg._ortho){
+              const q = applyOrtho(true, rec.x1, rec.y1, { x:rec.x2, y:rec.y2 });
+              rec.x2 = q.x; rec.y2 = q.y;
+            }
+          }
+          if (rec.t === "dim"){
+            rec.label = nextDimLetter(svg._shapes);
+            const inp = railEl.querySelector(`[data-dim="${rec.label}"]`);
+            if (inp){
+              inp.value = Math.round(Math.hypot(rec.x2-rec.x1, rec.y2-rec.y1));
+              inp.dispatchEvent(new Event("input", { bubbles:true }));
+            }
+          }
+          svg._shapes[svg._sel] = rec;
+        }
+      }
+    }
     if (mode==="pen" || mode==="draw") setTool("move");
     svg._snapMark = null; renderCanvas(svg);
     save();
@@ -739,7 +827,7 @@ function buildRails(){
       <img class="rail-dia" src="dia_${r.key}.png" alt="${r.name} reference">
       ${drawToolbar()}
       <div class="canvas-wrap"><svg class="draw-canvas" data-canvas viewBox="0 0 340 240"></svg></div>
-      <p class="hint">Reference above. Draw on the board: pick a shape, drag to place / move, grab an edge/end to resize. <b>📏 Measure</b> — press a corner and drag to any point for the distance (snaps to corners). Moving a box shows pink guide lines when its edges/centre line up with another box, and snaps to them. <b>Ortho</b> locks 0/45/90°, <b>Grid</b> snaps to 10, <b>Copy</b> duplicates, <b>＋/－/Fit</b> zoom, drag empty space to pan. Tap a letter box then drag a line to fill its length.</p>
+      <p class="hint"><b>✨ Smart</b> (Pen tool): sketch freehand — a rough line snaps to a clean straight line, a rough loop becomes a square box, and a CAD-style crank ( ╱‾╲ ) becomes a dimension line with end ticks and the next letter (A, B, C…) auto-assigned, filling that mm box. Endpoints snap to box corners. Also: <b>📏 Measure</b>, <b>Ortho</b> (0/45/90°), <b>Grid</b>, <b>Copy</b>, <b>＋/－/Fit</b> zoom, pan by dragging empty space. Alignment guides show when box edges/centres line up.</p>
       <div class="dims">
         ${r.letters.map(L => `<div><label>${L} (mm)</label><input type="text" inputmode="numeric" data-dim="${L}"></div>`).join("")}
       </div>
