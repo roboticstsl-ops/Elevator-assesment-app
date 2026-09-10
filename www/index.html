@@ -111,6 +111,13 @@
   .draw-canvas.arming { border-color:var(--accent); box-shadow:0 0 0 3px var(--accent-soft); }
   .draw-tools .arm { font-size:12px; color:var(--accent); font-weight:700; }
   .draw-tools .arm:empty { display:none; }
+  .draw-tools.cad { margin-top:0; }
+  .draw-tools.cad button { padding:6px 9px; font-size:12px; }
+  .draw-tools.cad button.on { background:var(--accent); color:#fff; border-color:var(--accent); }
+  .canvas-wrap { position:relative; }
+  .draw-hud { position:absolute; top:6px; left:8px; z-index:2;
+    background:var(--hd); color:#fff; font-size:11px; font-weight:700; letter-spacing:.4px;
+    padding:3px 7px; border-radius:5px; pointer-events:none; }
   .rail .dims { display:grid; grid-template-columns:repeat(auto-fill,minmax(84px,1fr)); gap:8px; }
   .rail .dims label { margin:0; }
   .rail .dims input { padding:8px; text-align:center; }
@@ -284,7 +291,7 @@
     <button class="block" onclick="exportDocx()">📝 Export report (.docx)</button>
   </section>
 
-  <div class="stamp">v0.1.6</div>
+  <div class="stamp">v0.1.7</div>
 </main>
 
 <script src="vendor/pizzip.js"></script>
@@ -327,12 +334,31 @@ function floorLabel(i){ return i===0 ? "Ground" : ord(i) + " Floor"; }
 const SHAPE_TOOLS = [["move","✋ Move"],["rect","▭ Box"],["line","╱ Line"],["arrow","➤ Arrow"],["pen","✏️ Pen"],["text","T Label"]];
 function drawToolbar(){
   return `<div class="draw-tools">` +
-    SHAPE_TOOLS.map(([t,l]) => `<button type="button" data-tool="${t}"${t==="move"?' class="on"':''}>${l}</button>`).join("") +
-    `<input type="text" class="lbl-in" data-label placeholder="label text" value="A">` +
-    `<span class="arm" data-arm></span>` +
-    `<button type="button" data-act="undo">↩︎ Undo</button>` +
-    `<button type="button" data-act="del">🗑 Delete</button>` +
-    `<button type="button" data-act="clear">Clear</button></div>`;
+      SHAPE_TOOLS.map(([t,l]) => `<button type="button" data-tool="${t}"${t==="move"?' class="on"':''}>${l}</button>`).join("") +
+      `<input type="text" class="lbl-in" data-label placeholder="label text" value="A">` +
+      `<span class="arm" data-arm></span>` +
+    `</div>` +
+    `<div class="draw-tools cad">` +
+      `<button type="button" data-act="grid">▦ Grid</button>` +
+      `<button type="button" data-act="ortho" class="on">⊾ Ortho</button>` +
+      `<button type="button" data-act="copy">⧉ Copy</button>` +
+      `<button type="button" data-act="zin">＋</button>` +
+      `<button type="button" data-act="zout">－</button>` +
+      `<button type="button" data-act="fit">⤢ Fit</button>` +
+      `<button type="button" data-act="undo">↩︎ Undo</button>` +
+      `<button type="button" data-act="del">🗑 Delete</button>` +
+      `<button type="button" data-act="clear">Clear</button>` +
+    `</div>`;
+}
+const GRID = 10;
+function snapGrid(on, p){ return on ? { x:Math.round(p.x/GRID)*GRID, y:Math.round(p.y/GRID)*GRID } : p; }
+function applyOrtho(on, ax, ay, p){
+  if (!on) return p;
+  const dx = p.x-ax, dy = p.y-ay, len = Math.hypot(dx,dy);
+  if (len < 1) return p;
+  let a = Math.atan2(dy,dx);
+  a = Math.round(a/(Math.PI/4))*(Math.PI/4);      // nearest 45°
+  return { x:ax + len*Math.cos(a), y:ay + len*Math.sin(a) };
 }
 function shapeBox(s){
   if (s.t==="rect") return { x:Math.min(s.x,s.x+s.w), y:Math.min(s.y,s.y+s.h), w:Math.abs(s.w), h:Math.abs(s.h) };
@@ -406,11 +432,21 @@ function shapesToSvg(shapes, sel){
   }).join("");
 }
 function canvasPoint(svg, e){
-  const r = svg.getBoundingClientRect(), vb = svg.viewBox.baseVal;
-  return { x:(e.clientX-r.left)/r.width*vb.width, y:(e.clientY-r.top)/r.height*vb.height };
+  const r = svg.getBoundingClientRect(), v = svg._vb || [0,0,340,240];
+  return { x:v[0] + (e.clientX-r.left)/r.width*v[2], y:v[1] + (e.clientY-r.top)/r.height*v[3] };
+}
+function applyVB(svg){ svg.setAttribute("viewBox", (svg._vb||[0,0,340,240]).join(" ")); }
+function gridSvg(v){
+  let g = "";
+  const x0 = Math.floor(v[0]/GRID)*GRID, y0 = Math.floor(v[1]/GRID)*GRID;
+  for (let x=x0; x<=v[0]+v[2]; x+=GRID) g += `<line x1="${x}" y1="${v[1]}" x2="${x}" y2="${v[1]+v[3]}" stroke="#e4e8ef" stroke-width="0.5"/>`;
+  for (let y=y0; y<=v[1]+v[3]; y+=GRID) g += `<line x1="${v[0]}" y1="${y}" x2="${v[0]+v[2]}" y2="${y}" stroke="#e4e8ef" stroke-width="0.5"/>`;
+  return g;
 }
 function renderCanvas(svg){
-  let m = shapesToSvg(svg._shapes, svg._sel);
+  const v = svg._vb || [0,0,340,240];
+  let m = svg._grid ? gridSvg(v) : "";
+  m += shapesToSvg(svg._shapes, svg._sel);
   if (svg._snapMark) m += `<circle cx="${svg._snapMark.x}" cy="${svg._snapMark.y}" r="6" fill="none" stroke="#1652c9" stroke-width="1.5"/>`;
   svg.innerHTML = m;
 }
@@ -418,8 +454,17 @@ function initCanvas(railEl){
   const svg = railEl.querySelector("[data-canvas]");
   const labelIn = railEl.querySelector("[data-label]");
   svg._shapes = []; svg._tool = "move"; svg._sel = -1; svg._hist = [];
+  svg._grid = false; svg._ortho = true; svg._vb = [0,0,340,240];
   let drag = null;
   const armSpan = railEl.querySelector("[data-arm]");
+  const hud = document.createElement("div");
+  hud.className = "draw-hud"; hud.hidden = true;
+  svg.parentNode.appendChild(hud);   // .canvas-wrap
+  applyVB(svg);
+  const showHud = (len, ang) => {
+    hud.hidden = false;
+    hud.textContent = "L " + Math.round(len) + "  ·  " + Math.round(((ang*180/Math.PI)%360+360)%360) + "°";
+  };
   const snap = () => { svg._hist.push(JSON.stringify(svg._shapes)); if (svg._hist.length > 50) svg._hist.shift(); };
   const setTool = t => { svg._tool = t; railEl.querySelectorAll("[data-tool]").forEach(b => b.classList.toggle("on", b.dataset.tool===t)); };
   const clearArm = () => { svg._activeDim = null; svg.classList.remove("arming"); armSpan.textContent = ""; };
@@ -427,20 +472,42 @@ function initCanvas(railEl){
     inp.addEventListener("focus", () => { svg._activeDim = inp.dataset.dim; svg.classList.add("arming"); armSpan.textContent = "draw " + inp.dataset.dim + " on the board"; });
     inp.addEventListener("input", () => { if (svg._activeDim === inp.dataset.dim) clearArm(); });
   });
-  railEl.querySelector(".draw-tools").addEventListener("click", e => {
+  const zoom = f => {
+    const v = svg._vb, cx = v[0]+v[2]/2, cy = v[1]+v[3]/2;
+    let w = v[2]*f, h = v[3]*f;
+    w = Math.max(60, Math.min(1400, w)); h = w*(240/340);
+    svg._vb = [cx-w/2, cy-h/2, w, h]; applyVB(svg); renderCanvas(svg);
+  };
+  railEl.addEventListener("click", e => {
+    if (!e.target.closest(".draw-tools")) return;
     clearArm();
     const tb = e.target.closest("[data-tool]");
     if (tb){ setTool(tb.dataset.tool); return; }
-    const ab = e.target.closest("[data-act]");
-    if (!ab) return;
-    if (ab.dataset.act === "undo"){
+    const ab = e.target.closest("[data-act]"); if (!ab) return;
+    const act = ab.dataset.act;
+    if (act === "undo"){
       if (svg._hist.length){ svg._shapes = JSON.parse(svg._hist.pop()); svg._sel = -1; renderCanvas(svg); save(); }
-    } else if (ab.dataset.act === "del"){
-      if (svg._sel < 0) svg._sel = svg._shapes.length - 1;   // nothing picked → drop the last shape
+    } else if (act === "del"){
+      if (svg._sel < 0) svg._sel = svg._shapes.length - 1;
       if (svg._sel >= 0){ snap(); svg._shapes.splice(svg._sel,1); svg._sel = -1; renderCanvas(svg); save(); }
-    } else if (ab.dataset.act === "clear"){
+    } else if (act === "clear"){
       if (svg._shapes.length){ snap(); svg._shapes = []; svg._sel = -1; renderCanvas(svg); save(); }
-    }
+    } else if (act === "grid"){
+      svg._grid = !svg._grid; ab.classList.toggle("on", svg._grid); renderCanvas(svg);
+    } else if (act === "ortho"){
+      svg._ortho = !svg._ortho; ab.classList.toggle("on", svg._ortho);
+    } else if (act === "copy"){
+      if (svg._sel >= 0){
+        snap();
+        const c = JSON.parse(JSON.stringify(svg._shapes[svg._sel]));
+        if (c.t==="rect"||c.t==="text"){ c.x+=12; c.y+=12; }
+        else if (c.d){ c.d = c.d.map(p=>[p[0]+12,p[1]+12]); }
+        else { c.x1+=12; c.y1+=12; c.x2+=12; c.y2+=12; }
+        svg._shapes.push(c); svg._sel = svg._shapes.length-1; renderCanvas(svg); save();
+      }
+    } else if (act === "zin"){ zoom(0.8); }
+    else if (act === "zout"){ zoom(1.25); }
+    else if (act === "fit"){ svg._vb = [0,0,340,240]; applyVB(svg); renderCanvas(svg); }
   });
   labelIn.addEventListener("focus", () => { const s = svg._shapes[svg._sel]; if (s && s.t==="text") snap(); });
   labelIn.addEventListener("input", () => {
@@ -487,20 +554,37 @@ function initCanvas(railEl){
       if (svg._shapes[i].t==="text") labelIn.value = svg._shapes[i].txt;
       drag = { mode:"move", start:p, orig:JSON.parse(JSON.stringify(svg._shapes[i])) };
       svg.setPointerCapture(e.pointerId);
+    } else {
+      drag = { mode:"pan", client:{x:e.clientX,y:e.clientY}, vb:svg._vb.slice(),
+               rect:svg.getBoundingClientRect() };
+      svg.setPointerCapture(e.pointerId);
     }
   });
   svg.addEventListener("pointermove", e => {
     if (!drag) return;
+    if (drag.mode==="pan"){
+      const dxu = (e.clientX-drag.client.x)/drag.rect.width*drag.vb[2];
+      const dyu = (e.clientY-drag.client.y)/drag.rect.height*drag.vb[3];
+      svg._vb = [drag.vb[0]-dxu, drag.vb[1]-dyu, drag.vb[2], drag.vb[3]];
+      applyVB(svg); renderCanvas(svg); return;
+    }
     if (!drag.snapped){ snap(); drag.snapped = true; }
     const raw = canvasPoint(svg, e), s = svg._shapes[svg._sel];
     const useSnap = drag.mode==="draw" || drag.mode==="dim" || drag.mode==="resize";
-    const p = useSnap ? snapPoint(svg._shapes, raw, svg._sel) : raw;
-    svg._snapMark = (useSnap && p !== raw) ? p : null;
+    let p = useSnap ? snapPoint(svg._shapes, raw, svg._sel) : raw;
+    if (useSnap) p = snapGrid(svg._grid, p);
+    svg._snapMark = (useSnap && (p.x!==raw.x || p.y!==raw.y)) ? p : null;
     if (drag.mode==="pen"){ s.d.push([raw.x,raw.y]); renderCanvas(svg); return; }
-    if (drag.mode==="dim"){ s.x2 = p.x; s.y2 = p.y; renderCanvas(svg); return; }
+    if (drag.mode==="dim"){
+      const q = applyOrtho(svg._ortho, s.x1, s.y1, p);
+      s.x2 = q.x; s.y2 = q.y;
+      showHud(Math.hypot(q.x-s.x1,q.y-s.y1), Math.atan2(q.y-s.y1,q.x-s.x1));
+      renderCanvas(svg); return;
+    }
     if (drag.mode==="draw"){
-      if (s.t==="rect"){ s.w = p.x-s.x; s.h = p.y-s.y; }
-      else { s.x2 = p.x; s.y2 = p.y; }
+      if (s.t==="rect"){ s.w = p.x-s.x; s.h = p.y-s.y; showHud(Math.hypot(s.w,s.h), Math.atan2(s.h,s.w)); }
+      else { const q = applyOrtho(svg._ortho, s.x1, s.y1, p); s.x2 = q.x; s.y2 = q.y;
+             showHud(Math.hypot(q.x-s.x1,q.y-s.y1), Math.atan2(q.y-s.y1,q.x-s.x1)); }
       renderCanvas(svg); return;
     }
     if (drag.mode==="move"){
@@ -519,7 +603,12 @@ function initCanvas(railEl){
         s.x = Math.min(l,r); s.w = Math.max(10, Math.abs(r-l));
         s.y = Math.min(t,bt); s.h = Math.max(10, Math.abs(bt-t));
       } else if (k==="p1"){ s.x1 = p.x; s.y1 = p.y; }
-      else { s.x2 = p.x; s.y2 = p.y; }
+      else {
+        const q = applyOrtho(svg._ortho, s.x1, s.y1, p);
+        s.x2 = q.x; s.y2 = q.y;
+      }
+      if (s.t==="line"||s.t==="arrow"||s.t==="dim")
+        showHud(Math.hypot(s.x2-s.x1,s.y2-s.y1), Math.atan2(s.y2-s.y1,s.x2-s.x1));
     }
     renderCanvas(svg);
   });
@@ -527,7 +616,9 @@ function initCanvas(railEl){
     if (!drag) return;
     const mode = drag.mode;
     drag = null;
+    hud.hidden = true;
     try { svg.releasePointerCapture(e.pointerId); } catch(_){}
+    if (mode==="pan"){ return; }
     if (mode==="draw"){
       const s = svg._shapes[svg._sel];
       if (s.t==="rect"){
@@ -575,8 +666,8 @@ function buildRails(){
       <h3>${r.name}</h3>
       <img class="rail-dia" src="dia_${r.key}.png" alt="${r.name} reference">
       ${drawToolbar()}
-      <svg class="draw-canvas" data-canvas viewBox="0 0 340 240"></svg>
-      <p class="hint">Reference above. Draw your own on the board: pick a shape, drag on the board to place it, drag to move, grab an edge/end to resize. Pen = freehand. Tap a letter box then drag a line to auto-fill its length. Undo / Delete / Clear as needed.</p>
+      <div class="canvas-wrap"><svg class="draw-canvas" data-canvas viewBox="0 0 340 240"></svg></div>
+      <p class="hint">Reference above. Draw on the board: pick a shape, drag to place, drag to move, grab an edge/end to resize. Pen = freehand. <b>Ortho</b> locks to 0/45/90°, <b>Grid</b> snaps to 10, <b>Copy</b> duplicates the selection, <b>＋/－/Fit</b> zoom, and dragging empty space pans. Tap a letter box then drag a line to auto-fill its length.</p>
       <div class="dims">
         ${r.letters.map(L => `<div><label>${L} (mm)</label><input type="text" inputmode="numeric" data-dim="${L}"></div>`).join("")}
       </div>
