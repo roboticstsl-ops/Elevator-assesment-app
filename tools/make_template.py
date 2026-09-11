@@ -247,12 +247,15 @@ def _text_p(anchor, text, bold=False):
 
 bodyel = doc.element.body
 kids = list(bodyel)
+# anchor the removal range on T[4] (Technical Findings - Elevator), not on the
+# "Top railing" text, so stray "Page N of M" / "Wall" leftovers between the two
+# also get swept out.
 start = end = None
-for i, el in enumerate(kids):
-    tx = "".join(el.itertext())
-    if start is None and "Top railing" in tx:
-        start = i
-    if start is not None and el.tag == qn("w:tbl") and "Left railing" in tx:
+t4_idx = next(i for i, el in enumerate(kids) if el is T[4]._tbl)
+start = t4_idx + 1
+for i in range(start, len(kids)):
+    el = kids[i]
+    if el.tag == qn("w:tbl") and "Left railing" in "".join(el.itertext()):
         end = i
         break
 if start is not None and end is not None:
