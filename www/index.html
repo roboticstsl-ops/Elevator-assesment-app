@@ -86,6 +86,11 @@
   table.rft th.loc .vlabel { writing-mode:vertical-rl; text-orientation:mixed; white-space:nowrap;
     font-size:11px; font-weight:650; color:var(--ink); text-transform:none; letter-spacing:0;
     margin:0 auto 5px; max-height:118px; }
+  table.rft th.loc .vlabel-input { writing-mode:vertical-rl; text-orientation:mixed;
+    font-size:11px; font-weight:650; color:var(--ink); text-transform:none; letter-spacing:0;
+    margin:0 auto 5px; max-height:118px; min-height:70px; width:20px; border:1px solid transparent;
+    border-radius:4px; background:transparent; text-align:center; padding:2px; }
+  table.rft th.loc .vlabel-input:focus { border-color:var(--accent); background:#fff; outline:none; }
   table.rft th.loc .colbtns { display:flex; gap:3px; justify-content:center; margin-bottom:4px; }
   table.rft th.loc .colbtns .sptest { padding:3px 4px; font-size:11px; }
   table.rft th.loc .locin { width:42px; font-size:10px; padding:3px; border:1px solid var(--bd);
@@ -118,6 +123,25 @@
   .draw-hud { position:absolute; top:6px; left:8px; z-index:2;
     background:var(--hd); color:#fff; font-size:11px; font-weight:700; letter-spacing:.4px;
     padding:3px 7px; border-radius:5px; pointer-events:none; }
+
+  /* Fullscreen drawing: tap ⛶ to make .draw-area the fullscreen element.
+     The toolbar (already the first children) sticks to the top, the canvas
+     grows to fill the rest, and ✓ Submit (hidden otherwise) appears fixed
+     in the corner to exit. Landscape is requested via screen.orientation
+     from JS once fullscreen is actually active. */
+  .fs-enter { position:absolute; top:6px; right:8px; z-index:2; padding:6px 10px; font-size:12px;
+    background:var(--hd); color:#fff; border:none; border-radius:6px; }
+  .fs-exit { display:none; }
+  .draw-area:fullscreen, .draw-area:-webkit-full-screen {
+    background:#fff; display:flex; flex-direction:column; padding:10px; overflow:auto; }
+  .draw-area:fullscreen .draw-tools, .draw-area:-webkit-full-screen .draw-tools { flex:none; }
+  .draw-area:fullscreen .canvas-wrap, .draw-area:-webkit-full-screen .canvas-wrap { flex:1; min-height:0; }
+  .draw-area:fullscreen .draw-canvas, .draw-area:-webkit-full-screen .draw-canvas { width:100%; height:100%; }
+  .draw-area:fullscreen .fs-enter, .draw-area:-webkit-full-screen .fs-enter { display:none; }
+  .draw-area:fullscreen .fs-exit, .draw-area:-webkit-full-screen .fs-exit {
+    display:flex; position:fixed; top:10px; right:10px; z-index:99999; padding:10px 16px;
+    font-size:14px; font-weight:700; background:var(--accent); color:#fff; border:none;
+    border-radius:8px; box-shadow:0 2px 10px rgba(0,0,0,.3); align-items:center; gap:6px; }
   .rail .dims { display:grid; grid-template-columns:repeat(auto-fill,minmax(84px,1fr)); gap:8px; }
   .rail .dims label { margin:0; }
   .rail .dims input { padding:8px; text-align:center; }
@@ -251,9 +275,11 @@
     <div style="display:flex;gap:8px;align-items:flex-end;flex-wrap:wrap">
       <div><label>Number of floors (excl. Ground)</label>
         <input type="text" id="floorCount" inputmode="numeric" value="25" style="width:120px"></div>
+      <div><label>Basement / below-ground levels</label>
+        <input type="text" id="basementCount" inputmode="numeric" value="0" style="width:120px"></div>
       <button class="sm" onclick="buildFloorTables()">Generate floor rows</button>
     </div>
-    <p class="hint">Regenerating keeps values already entered (matched by row order).</p>
+    <p class="hint">Regenerating keeps values already entered (matched by row order). Every floor name below (Ground, 1st, 2nd… and any Basement levels) is editable — tap the name in the 3.2 table header and retype it (e.g. "B Podium", "Basement 1"); the same name is used in 3.3 automatically.</p>
 
     <h3>3.2 RF Measurements (On top of elevator cabin)</h3>
     <div id="rf2" class="rf-wrap"></div>
@@ -280,9 +306,20 @@
     <h2>5. Photos &amp; Attachments</h2>
     <div style="display:flex;gap:8px;flex-wrap:wrap;margin-bottom:8px">
       <button class="sm ghost" onclick="addPhoto()">+ Add photo / attachment</button>
+      <button class="sm ghost" onclick="takeImageQuick('photos','Site Photo')">📷 Take Image</button>
       <button class="sm ghost" onclick="openPermGate()">Permissions</button>
     </div>
     <div id="photos"></div>
+  </section>
+
+  <section class="card">
+    <h2>6. Control Panel Photos</h2>
+    <p class="hint">Kept separate from the general site photos above — just the control panel/button module shots.</p>
+    <div style="display:flex;gap:8px;flex-wrap:wrap;margin-bottom:8px">
+      <button class="sm ghost" onclick="addPhoto(null,'panelPhotos')">+ Add photo / attachment</button>
+      <button class="sm ghost" onclick="takeImageQuick('panelPhotos','Control Panel')">📷 Take Image</button>
+    </div>
+    <div id="panelPhotos"></div>
   </section>
 
   <section class="card">
@@ -292,7 +329,7 @@
     <button class="sm ghost" style="width:100%;margin-top:8px" onclick="sendReportTelegram()">✈️ Send to Telegram</button>
   </section>
 
-  <div class="stamp">v0.3.0</div>
+  <div class="stamp">v0.4.0</div>
 </main>
 
 <script src="vendor/pizzip.js"></script>
@@ -329,7 +366,19 @@ const PIN_COLORS = ["Black","Brown","Red","Orange"];
 const $ = s => document.querySelector(s);
 const esc = s => String(s==null?"":s).replace(/[&<>"]/g, c => ({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;"}[c]));
 function ord(n){ const s=["th","st","nd","rd"], v=n%100; return n + (s[(v-20)%10] || s[v] || s[0]); }
-function floorLabel(i){ return i===0 ? "Ground" : ord(i) + " Floor"; }
+// ci (column id) is 0 for Ground, 1..N for the numbered floors above it, and
+// -1..-B for basement/below-ground levels -- negative so adding or removing
+// basement rows never renumbers (and never collides with) the RF data
+// already recorded against Ground and the numbered floors.
+function defaultFloorLabel(ci){
+  if (ci < 0) return "Basement " + (-ci);
+  if (ci === 0) return "Ground";
+  return ord(ci) + " Floor";
+}
+// Per-floor name overrides, shared between 3.2 and 3.3 (same physical floor,
+// same name in both tables) -- persisted alongside rfModel, see collect()/restore().
+let floorNames = {};
+function floorLabel(ci){ return floorNames[ci] || defaultFloorLabel(ci); }
 
 /* ---------- railing drawing board ---------- */
 const SHAPE_TOOLS = [["move","✋ Move"],["rect","▭ Box"],["line","╱ Line"],["arrow","➤ Arrow"],["pen","✏️ Pen"],["measure","📏 Measure"],["text","T Label"]];
@@ -829,12 +878,20 @@ function buildRails(){
   $("#rails").innerHTML = RAILS.map(r => `
     <div class="rail" data-rail="${r.key}">
       <h3>${r.name}</h3>
-      ${drawToolbar()}
-      <div class="canvas-wrap"><svg class="draw-canvas" data-canvas viewBox="0 0 340 240"></svg></div>
-      <p class="hint">Draw the railing yourself. Every <b>measurement</b> (📏 Measure, or a smart-pen crank ╱‾╲) auto-gets the next letter A, B, C… and fills that mm box. Only letters with a value go into the report — the drawing itself isn't printed, just the measurements table. <b>✨ Smart</b> cleans freehand lines/boxes; <b>Ortho</b>, <b>Grid</b>, <b>Copy</b>, <b>＋/－/Fit</b>, pan on empty space, alignment guides.</p>
+      <div class="draw-area" data-draw-area>
+        ${drawToolbar()}
+        <div class="canvas-wrap">
+          <svg class="draw-canvas" data-canvas viewBox="0 0 340 240"></svg>
+          <button type="button" class="fs-enter" data-fs-enter title="Fullscreen — more room to draw">⛶ Fullscreen</button>
+          <button type="button" class="fs-exit" data-fs-exit title="Exit fullscreen">✓ Submit</button>
+        </div>
+      </div>
+      <p class="hint">Draw the railing yourself. Every <b>measurement</b> (📏 Measure, or a smart-pen crank ╱‾╲) auto-gets the next letter A, B, C… and fills that mm box. Only letters with a value go into the report — the drawing itself isn't printed, just the measurements table. <b>✨ Smart</b> cleans freehand lines/boxes; <b>Ortho</b>, <b>Grid</b>, <b>Copy</b>, <b>＋/－/Fit</b>, pan on empty space, alignment guides. Tap <b>⛶ Fullscreen</b> for a full-screen, landscape drawing area — <b>✓ Submit</b> in the corner exits back.</p>
       <div class="dims">
         ${r.letters.map(L => `<div><label>${L} (mm)</label><input type="text" inputmode="numeric" data-dim="${L}"></div>`).join("")}
       </div>
+      <button type="button" class="sm ghost" style="margin-top:8px" onclick="takeImageQuick('photos','${esc(r.name)} — Site Photo')">📷 Take Image (${r.name})</button>
+      <p class="hint">Goes straight into Section 5 Photos &amp; Attachments below, captioned "${esc(r.name)} — Site Photo".</p>
     </div>`).join("");
   RAILS.forEach(r => initCanvas(document.querySelector(`[data-rail="${r.key}"]`)));
 }
@@ -850,28 +907,37 @@ let rfModel = { rf1:{}, rf2:{}, rf3:{} };
 const RF_CORNER = { rf1:"3.1 Charging + Lobby", rf2:"3.2 On cabin", rf3:"3.3 In cabin" };
 
 function floorCountVal(){ return Math.max(0, Math.min(120, parseInt($("#floorCount").value, 10) || 0)); }
-function rfLabels(id, n){
-  if (id === "rf1") return RF1_LOCS.slice();
+function basementCountVal(){ return Math.max(0, Math.min(20, parseInt(($("#basementCount")||{}).value, 10) || 0)); }
+// Returns [{ci, label}, …] -- rf1's three fixed locations use ci 0/1/2;
+// rf2/rf3 share the same floor set: ci -B..-1 (basement, editable, see
+// defaultFloorLabel), 0 (Ground), 1..N (numbered floors).
+function rfLabels(id, n, b){
+  if (id === "rf1") return RF1_LOCS.map((label, ci) => ({ ci, label }));
   const cnt = (n == null) ? floorCountVal() : n;
-  const out = [floorLabel(0)];
-  for (let i = 1; i <= cnt; i++) out.push(floorLabel(i));
+  const bcnt = (b == null) ? basementCountVal() : b;
+  const out = [];
+  for (let i = bcnt; i >= 1; i--) out.push({ ci: -i, label: floorLabel(-i) });
+  for (let i = 0; i <= cnt; i++) out.push({ ci: i, label: floorLabel(i) });
   return out;
 }
 function rfVal(id, ci, col){ return (rfModel[id] || {})[ci + "|" + col] || ""; }
 
-function rfTable(id, labels){
-  const colHead = labels.map((lab, ci) => `
-    <th class="loc" title="${esc(lab)}">
+function rfTable(id, cols){
+  const editable = id !== "rf1";
+  const colHead = cols.map(({ci, label}) => `
+    <th class="loc" title="${esc(label)}">
       <div class="colbtns">
         <button type="button" class="sptest sigread" data-sig="${id}:${ci}" title="Read signal (Android app)">📶</button>
         <button type="button" class="sptest" data-sp="${id}:${ci}" title="Speed test">⚡</button>
       </div>
-      <div class="vlabel">${esc(lab)}</div>
+      ${editable
+        ? `<input class="vlabel-input" data-floorname="${ci}" value="${esc(label)}">`
+        : `<div class="vlabel">${esc(label)}</div>`}
     </th>`).join("");
   const rowsHtml = METRICS.map(m => `
     <tr>
       <th class="metric">${METRIC_LBL[m]}</th>
-      ${labels.map((_, ci) => `
+      ${cols.map(({ci}) => `
         <td><input inputmode="numeric" data-rf="${id}" data-ri="${ci}" data-col="${activeCarrier}.${m}"
              value="${esc(rfVal(id, ci, activeCarrier + "." + m))}"></td>`).join("")}
     </tr>`).join("");
@@ -883,9 +949,22 @@ function renderRf(id){ document.getElementById(id).innerHTML = rfTable(id, rfLab
 function renderAllRf(){ ["rf1","rf2","rf3"].forEach(renderRf); }
 function buildRf1(){ renderRf("rf1"); }
 function buildFloorTables(){ renderRf("rf2"); renderRf("rf3"); save(); }
+// Renaming a floor in either table updates the shared name and the other
+// table's matching header in place (no full rebuild -- keeps focus/caret).
+document.addEventListener("input", e => {
+  const el = e.target.closest("[data-floorname]");
+  if (!el) return;
+  const ci = el.dataset.floorname;
+  floorNames[ci] = el.value.trim();
+  document.querySelectorAll(`[data-floorname="${ci}"]`).forEach(other => {
+    if (other !== el) other.value = el.value;
+  });
+  save();
+});
 
 /* ---------- photos ---------- */
-function addPhoto(data){
+function addPhoto(data, containerId){
+  containerId = containerId || "photos";
   const wrap = document.createElement("div");
   wrap.className = "photo-item";
   wrap.innerHTML = `
@@ -896,7 +975,7 @@ function addPhoto(data){
     <input type="file" accept="image/*" data-photo="file" style="margin-top:8px">
     <img data-photo="img" hidden>
     <div style="margin-top:8px"><button class="sm ghost" onclick="this.closest('.photo-item').remove();save()">Remove</button></div>`;
-  $("#photos").appendChild(wrap);
+  document.getElementById(containerId).appendChild(wrap);
   const img = wrap.querySelector('[data-photo="img"]');
   if (data){
     wrap.querySelector('[data-photo="desc"]').value = data.desc || "";
@@ -910,6 +989,21 @@ function addPhoto(data){
     save();
   });
   wrap.querySelectorAll("input").forEach(i => i.addEventListener("input", save));
+}
+// One-tap camera capture (no file-chooser dialog needed -- Capacitor's
+// Android bridge already sends <input capture> straight to the camera app),
+// used by the railing "Take Image" buttons and the Control Panel section.
+function takeImageQuick(containerId, desc){
+  const input = document.createElement("input");
+  input.type = "file"; input.accept = "image/*"; input.capture = "environment";
+  input.style.display = "none";
+  document.body.appendChild(input);
+  input.addEventListener("change", async () => {
+    const f = input.files && input.files[0];
+    if (f){ addPhoto({ desc, filename: f.name, img: await shrink(f) }, containerId); save(); }
+    input.remove();
+  }, { once:true });
+  input.click();
 }
 function shrink(file){
   return new Promise(res => {
@@ -1109,7 +1203,9 @@ async function onSpeedTest(btn){
 
 /* ---------- state collect / restore ---------- */
 function collect(){
-  const s = { fields:{}, checklist:{}, rails:{}, pinout:[], rf:{ rf1:{}, rf2:{}, rf3:{} }, photos:[], floorCount:$("#floorCount").value, carrier:activeCarrier };
+  const s = { fields:{}, checklist:{}, rails:{}, pinout:[], rf:{ rf1:{}, rf2:{}, rf3:{} }, photos:[], panelPhotos:[],
+    floorCount:$("#floorCount").value, basementCount:($("#basementCount")||{}).value || "0",
+    floorNames: {...floorNames}, carrier:activeCarrier };
   document.querySelectorAll("[data-f]").forEach(el => s.fields[el.dataset.f] = (el.type === "checkbox") ? (el.checked ? "yes" : "") : el.value);
   document.querySelectorAll("[data-chk]").forEach(el => s.checklist[el.dataset.chk] = el.value);
   document.querySelectorAll("[data-rail]").forEach(r => {
@@ -1123,6 +1219,11 @@ function collect(){
     (s.pinout[+el.dataset.pinColor] = s.pinout[+el.dataset.pinColor] || {}).color = el.value; });
   s.rf = JSON.parse(JSON.stringify(rfModel));
   document.querySelectorAll("#photos .photo-item").forEach(p => s.photos.push({
+    desc: p.querySelector('[data-photo="desc"]').value,
+    filename: p.querySelector('[data-photo="filename"]').value,
+    img: (i => i.hidden ? "" : i.src)(p.querySelector('[data-photo="img"]')),
+  }));
+  document.querySelectorAll("#panelPhotos .photo-item").forEach(p => s.panelPhotos.push({
     desc: p.querySelector('[data-photo="desc"]').value,
     filename: p.querySelector('[data-photo="filename"]').value,
     img: (i => i.hidden ? "" : i.src)(p.querySelector('[data-photo="img"]')),
@@ -1146,10 +1247,13 @@ function restore(s, opts={}){
       const u=document.querySelector(`[data-pin-use="${i}"]`); if (u) u.value=o.use||"";
       const c=document.querySelector(`[data-pin-color="${i}"]`); if (c) c.value=o.color||""; });
     (s.photos||[]).forEach(p => addPhoto(p));
+    (s.panelPhotos||[]).forEach(p => addPhoto(p, "panelPhotos"));
   }
   if (s.rf && (s.rf.rf1 || s.rf.rf2 || s.rf.rf3)){
     rfModel = { rf1:{...(s.rf.rf1||{})}, rf2:{...(s.rf.rf2||{})}, rf3:{...(s.rf.rf3||{})} };
   }
+  if (s.floorNames) floorNames = {...s.floorNames};
+  if (!opts.rfOnly && $("#basementCount") && s.basementCount != null) $("#basementCount").value = s.basementCount;
   if (!opts.noRender && document.getElementById("rf1")) renderAllRf();
 }
 
@@ -1233,6 +1337,10 @@ function docxData(s){
     d["pin" + (i + 1) + "_color"] = (o && o.color) || "";
   });
   d.photos = (s.photos || []).map(p => ({ p_desc: p.desc || "", p_file: p.filename || "" }));
+  // Only reaches the printed report if template.docx has a {#panel_photos}
+  // loop tag for it (same convention as {#photos}) -- otherwise docxtemplater
+  // just ignores the unused key, so this is safe either way.
+  d.panel_photos = (s.panelPhotos || []).map(p => ({ p_desc: p.desc || "", p_file: p.filename || "" }));
   return d;
 }
 async function buildDocx(){
@@ -1306,11 +1414,12 @@ async function sendToTelegram(base64, filename, caption){
 function rowsFromState(s, id){
   const m = (s.rf && s.rf[id]) || {};
   const n = parseInt(s.floorCount, 10) || 25;
-  const labels = (id === "rf1")
-    ? RF1_LOCS.map((d, ci) => m[ci + "|loc"] || d)
-    : rfLabels(id, n);
-  return labels.map((loc, ci) => {
-    const g = { loc, du:{}, et:{} };
+  const b = parseInt(s.basementCount, 10) || 0;
+  const cols = (id === "rf1")
+    ? RF1_LOCS.map((d, ci) => ({ ci, label: m[ci + "|loc"] || d }))
+    : rfLabels(id, n, b);
+  return cols.map(({ci, label}) => {
+    const g = { loc: label, du:{}, et:{} };
     METRICS.forEach(k => {
       const du = m[ci + "|du." + k]; if (du) g.du[k] = du;
       const et = m[ci + "|et." + k]; if (et) g.et[k] = et;
@@ -1386,7 +1495,31 @@ document.addEventListener("click", e => {
   const sig = e.target.closest(".sigread");
   if (sig){ onSignalRead(sig); return; }
   const sp = e.target.closest(".sptest");
-  if (sp) onSpeedTest(sp);
+  if (sp){ onSpeedTest(sp); return; }
+  if (e.target.closest("[data-fs-enter]")){ enterDrawFullscreen(e.target.closest("[data-draw-area]")); return; }
+  if (e.target.closest("[data-fs-exit]")){ exitDrawFullscreen(); return; }
+});
+
+/* ---------- fullscreen drawing (railing canvases) ---------- */
+function enterDrawFullscreen(area){
+  if (!area) return;
+  const req = area.requestFullscreen || area.webkitRequestFullscreen;
+  if (!req){ showTip("Fullscreen isn't supported here — reinstall the latest APK."); return; }
+  req.call(area).then(() => {
+    try { screen.orientation && screen.orientation.lock && screen.orientation.lock("landscape").catch(() => {}); }
+    catch(e){}
+  }).catch(() => {});
+}
+function exitDrawFullscreen(){
+  const exit = document.exitFullscreen || document.webkitExitFullscreen;
+  if (exit) exit.call(document);
+  try { screen.orientation && screen.orientation.unlock && screen.orientation.unlock(); } catch(e){}
+}
+// Safety net: unlock orientation if fullscreen was exited some other way
+// (system back gesture) instead of tapping ✓ Submit.
+document.addEventListener("fullscreenchange", () => {
+  if (document.fullscreenElement) return;
+  try { screen.orientation && screen.orientation.unlock && screen.orientation.unlock(); } catch(e){}
 });
 
 /* ---------- permission gate on launch ---------- */
