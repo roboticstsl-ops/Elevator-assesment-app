@@ -169,7 +169,7 @@
     <h2>Set up access</h2>
     <p>This survey app needs a few permissions before you start. Grant them once and you won't be asked again.</p>
     <ul>
-      <li><span class="ic">📶</span><span>Phone &amp; Location — read RSRP / RSRQ / SINR / band from the modem<br><span class="hint">Turn the Location toggle ON too, for the band value.</span></span><span class="st" data-pg="signal">—</span></li>
+      <li><span class="ic">📶</span><span>Phone &amp; Location — read RSRP / RSRQ / SINR / frequency / band from the modem<br><span class="hint">Turn the Location toggle ON too, for the band and frequency value.</span></span><span class="st" data-pg="signal">—</span></li>
       <li><span class="ic">📷</span><span>Camera — take site photos in Section 5</span><span class="st" data-pg="camera">—</span></li>
       <li><span class="ic">🌐</span><span>Network — run the download / upload speed test</span><span class="st ok" data-pg="net">on</span></li>
     </ul>
@@ -242,7 +242,7 @@
       <button type="button" data-carrier="du" class="on">DU</button>
       <button type="button" data-carrier="et">e&amp;</button>
     </div>
-    <p class="hint">The table shows one carrier at a time — switch here to enter the other. Per row: <b>📶</b> reads RSRP / RSRQ / SINR / Band from the modem (Android app; turn Location ON for band). <b>⚡</b> runs a download / upload speed test and fills DL / UL. Both carriers' values are kept and printed in the PDF.</p>
+    <p class="hint">The table shows one carrier at a time — switch here to enter the other. Per row: <b>📶</b> reads RSRP / RSRQ / SINR / Frequency / Band from the modem (Android app; turn Location ON for band and frequency). <b>⚡</b> runs a download / upload speed test and fills DL / UL. Both carriers' values are kept and printed in the PDF.</p>
 
     <h3>3.1 RF Measurements (Charging Area + Building Lobby)</h3>
     <div id="rf1" class="rf-wrap"></div>
@@ -292,15 +292,15 @@
     <button class="sm ghost" style="width:100%;margin-top:8px" onclick="sendReportTelegram()">✈️ Send to Telegram</button>
   </section>
 
-  <div class="stamp">v0.2.9</div>
+  <div class="stamp">v0.3.0</div>
 </main>
 
 <script src="vendor/pizzip.js"></script>
 <script src="vendor/docxtemplater.js"></script>
 <script>
 const LS_KEY = "svs_draft_v3";
-const METRICS = ["rsrp","rsrq","sinr","band","dl","ul"];
-const METRIC_LBL = { rsrp:"RSRP (dBm)", rsrq:"RSRQ (dB)", sinr:"SINR (dB)", band:"Band", dl:"DL (Mbps)", ul:"UL (Mbps)" };
+const METRICS = ["rsrp","rsrq","sinr","freq","band","dl","ul"];
+const METRIC_LBL = { rsrp:"RSRP (dBm)", rsrq:"RSRQ (dB)", sinr:"SINR (dB)", freq:"Frequency (MHz)", band:"Band", dl:"DL (Mbps)", ul:"UL (Mbps)" };
 const CHECKLIST = [
   "Elevator Bank(s) identified and access confirmed from main lobby",
   "Machine room / controller location identified for networking",
@@ -956,15 +956,16 @@ async function onSignalRead(btn){
   const orig = btn.textContent;
   btn.disabled = true; btn.textContent = "…";
   try {
-    const r = await CellSignal.read({ carrier: activeCarrier });   // { tech, rsrp, rsrq, sinr?, band? }
+    const r = await CellSignal.read({ carrier: activeCarrier });   // { tech, rsrp, rsrq, sinr?, band?, freq? }
     const set = (col, val) => {
       if (val === undefined || val === null || val === "") return;
       const el = q(col); if (!el) return;
       el.value = val; el.dispatchEvent(new Event("input", { bubbles:true }));
     };
-    set("rsrp", r.rsrp); set("rsrq", r.rsrq); set("sinr", r.sinr); set("band", r.band);
+    set("rsrp", r.rsrp); set("rsrq", r.rsrq); set("sinr", r.sinr); set("freq", r.freq); set("band", r.band);
     let msg = `${activeCarrier.toUpperCase()} ${r.tech||""} · RSRP ${r.rsrp} RSRQ ${r.rsrq}` +
       (r.sinr != null ? ` SINR ${r.sinr}` : "");
+    if (r.freq) msg += ` · ${r.freq} MHz`;
     if (r.band) msg += ` ${r.band}`;
     else if (r.bandHint === "need-location") msg += " · Band: allow Location + turn Location ON, then retry";
     else msg += " · Band unavailable from this cell — type it";
@@ -1208,9 +1209,9 @@ function docxData(s){
   const mkRows = id => rowsFromState(s, id).map(g => ({
     loc: g.loc || "",
     du_rsrp: g.du.rsrp || "", du_rsrq: g.du.rsrq || "", du_sinr: g.du.sinr || "",
-    du_band: g.du.band || "", du_dl: g.du.dl || "", du_ul: g.du.ul || "",
+    du_freq: g.du.freq || "", du_band: g.du.band || "", du_dl: g.du.dl || "", du_ul: g.du.ul || "",
     et_rsrp: g.et.rsrp || "", et_rsrq: g.et.rsrq || "", et_sinr: g.et.sinr || "",
-    et_band: g.et.band || "", et_dl: g.et.dl || "", et_ul: g.et.ul || "",
+    et_freq: g.et.freq || "", et_band: g.et.band || "", et_dl: g.et.dl || "", et_ul: g.et.ul || "",
   }));
   d.rf1 = mkRows("rf1"); d.rf2 = mkRows("rf2"); d.rf3 = mkRows("rf3");
 
