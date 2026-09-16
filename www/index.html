@@ -277,9 +277,14 @@
         <input type="text" id="floorCount" inputmode="numeric" value="25" style="width:120px"></div>
       <div><label>Basement / below-ground levels</label>
         <input type="text" id="basementCount" inputmode="numeric" value="0" style="width:120px"></div>
+      <div><label>Podium levels (P1, P2…)</label>
+        <input type="text" id="podiumCount" inputmode="numeric" value="0" style="width:120px"></div>
+      <div style="display:flex;align-items:center;gap:8px;padding-bottom:6px">
+        <input type="checkbox" id="mezzanine" style="width:20px;height:20px;margin:0">
+        <label style="margin:0">Mezzanine floor (M, right after Ground)</label></div>
       <button class="sm" onclick="buildFloorTables()">Generate floor rows</button>
     </div>
-    <p class="hint">Regenerating keeps values already entered (matched by row order). Every floor name below (Ground, 1st, 2nd… and any Basement levels) is editable — tap the name in the 3.2 table header and retype it (e.g. "B Podium", "Basement 1"); the same name is used in 3.3 automatically.</p>
+    <p class="hint">Regenerating keeps values already entered (matched by row order). Order is Basement → Podium → Ground → Mezzanine (if ticked) → 1, 2, 3… Every floor name below is editable — tap the name in the 3.2 table header and retype it (e.g. "B Podium", "Basement 1"); the same name is used in 3.3 automatically.</p>
 
     <h3>3.2 RF Measurements (On top of elevator cabin)</h3>
     <div id="rf2" class="rf-wrap"></div>
@@ -329,7 +334,7 @@
     <button class="sm ghost" style="width:100%;margin-top:8px" onclick="sendReportTelegram()">✈️ Send to Telegram</button>
   </section>
 
-  <div class="stamp">v0.4.0</div>
+  <div class="stamp">v0.5.0</div>
 </main>
 
 <script src="vendor/pizzip.js"></script>
@@ -366,11 +371,17 @@ const PIN_COLORS = ["Black","Brown","Red","Orange"];
 const $ = s => document.querySelector(s);
 const esc = s => String(s==null?"":s).replace(/[&<>"]/g, c => ({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;"}[c]));
 function ord(n){ const s=["th","st","nd","rd"], v=n%100; return n + (s[(v-20)%10] || s[v] || s[0]); }
-// ci (column id) is 0 for Ground, 1..N for the numbered floors above it, and
-// -1..-B for basement/below-ground levels -- negative so adding or removing
-// basement rows never renumbers (and never collides with) the RF data
-// already recorded against Ground and the numbered floors.
+// ci (column id) identifies a floor's RF data regardless of display order,
+// so adding/removing/reordering any tier never renumbers or collides with
+// data already recorded elsewhere:
+//   0        Ground
+//   1..N     numbered floors above Ground
+//   -1..-B   Basement (existing scheme, unchanged)
+//   "p1".."pP"  Podium (string keys -- can't collide with the numeric ones above)
+//   "m"      Mezzanine (single, toggled on/off)
 function defaultFloorLabel(ci){
+  if (ci === "m") return "Mezzanine";
+  if (typeof ci === "string" && ci[0] === "p") return "P" + ci.slice(1);
   if (ci < 0) return "Basement " + (-ci);
   if (ci === 0) return "Ground";
   return ord(ci) + " Floor";
@@ -908,16 +919,23 @@ const RF_CORNER = { rf1:"3.1 Charging + Lobby", rf2:"3.2 On cabin", rf3:"3.3 In 
 
 function floorCountVal(){ return Math.max(0, Math.min(120, parseInt($("#floorCount").value, 10) || 0)); }
 function basementCountVal(){ return Math.max(0, Math.min(20, parseInt(($("#basementCount")||{}).value, 10) || 0)); }
-// Returns [{ci, label}, …] -- rf1's three fixed locations use ci 0/1/2;
-// rf2/rf3 share the same floor set: ci -B..-1 (basement, editable, see
-// defaultFloorLabel), 0 (Ground), 1..N (numbered floors).
-function rfLabels(id, n, b){
+function podiumCountVal(){ return Math.max(0, Math.min(20, parseInt(($("#podiumCount")||{}).value, 10) || 0)); }
+function mezzanineVal(){ return !!($("#mezzanine") && $("#mezzanine").checked); }
+// Returns [{ci, label}, …] in display order: Basement (deepest first) →
+// Podium (P<count>..P1) → Ground → Mezzanine (if ticked) → 1..N.
+// rf1's three fixed locations use ci 0/1/2 instead (unaffected by any of this).
+function rfLabels(id, n, b, p, mz){
   if (id === "rf1") return RF1_LOCS.map((label, ci) => ({ ci, label }));
   const cnt = (n == null) ? floorCountVal() : n;
   const bcnt = (b == null) ? basementCountVal() : b;
+  const pcnt = (p == null) ? podiumCountVal() : p;
+  const mezz = (mz == null) ? mezzanineVal() : mz;
   const out = [];
   for (let i = bcnt; i >= 1; i--) out.push({ ci: -i, label: floorLabel(-i) });
-  for (let i = 0; i <= cnt; i++) out.push({ ci: i, label: floorLabel(i) });
+  for (let i = pcnt; i >= 1; i--) out.push({ ci: "p"+i, label: floorLabel("p"+i) });
+  out.push({ ci: 0, label: floorLabel(0) });
+  if (mezz) out.push({ ci: "m", label: floorLabel("m") });
+  for (let i = 1; i <= cnt; i++) out.push({ ci: i, label: floorLabel(i) });
   return out;
 }
 function rfVal(id, ci, col){ return (rfModel[id] || {})[ci + "|" + col] || ""; }
@@ -1205,6 +1223,7 @@ async function onSpeedTest(btn){
 function collect(){
   const s = { fields:{}, checklist:{}, rails:{}, pinout:[], rf:{ rf1:{}, rf2:{}, rf3:{} }, photos:[], panelPhotos:[],
     floorCount:$("#floorCount").value, basementCount:($("#basementCount")||{}).value || "0",
+    podiumCount:($("#podiumCount")||{}).value || "0", mezzanine: mezzanineVal(),
     floorNames: {...floorNames}, carrier:activeCarrier };
   document.querySelectorAll("[data-f]").forEach(el => s.fields[el.dataset.f] = (el.type === "checkbox") ? (el.checked ? "yes" : "") : el.value);
   document.querySelectorAll("[data-chk]").forEach(el => s.checklist[el.dataset.chk] = el.value);
@@ -1254,6 +1273,8 @@ function restore(s, opts={}){
   }
   if (s.floorNames) floorNames = {...s.floorNames};
   if (!opts.rfOnly && $("#basementCount") && s.basementCount != null) $("#basementCount").value = s.basementCount;
+  if (!opts.rfOnly && $("#podiumCount") && s.podiumCount != null) $("#podiumCount").value = s.podiumCount;
+  if (!opts.rfOnly && $("#mezzanine")) $("#mezzanine").checked = !!s.mezzanine;
   if (!opts.noRender && document.getElementById("rf1")) renderAllRf();
 }
 
@@ -1415,9 +1436,11 @@ function rowsFromState(s, id){
   const m = (s.rf && s.rf[id]) || {};
   const n = parseInt(s.floorCount, 10) || 25;
   const b = parseInt(s.basementCount, 10) || 0;
+  const p = parseInt(s.podiumCount, 10) || 0;
+  const mz = !!s.mezzanine;
   const cols = (id === "rf1")
     ? RF1_LOCS.map((d, ci) => ({ ci, label: m[ci + "|loc"] || d }))
-    : rfLabels(id, n, b);
+    : rfLabels(id, n, b, p, mz);
   return cols.map(({ci, label}) => {
     const g = { loc: label, du:{}, et:{} };
     METRICS.forEach(k => {
