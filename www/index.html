@@ -91,16 +91,17 @@
     margin:0 auto 5px; max-height:118px; min-height:70px; width:20px; border:1px solid transparent;
     border-radius:4px; background:transparent; text-align:center; padding:2px; }
   table.rft th.loc .vlabel-input:focus { border-color:var(--accent); background:#fff; outline:none; }
-  table.rft th.loc .colbtns { display:flex; gap:3px; justify-content:center; margin-bottom:4px; }
-  table.rft th.loc .colbtns .sptest { padding:3px 4px; font-size:11px; }
   table.rft th.loc .locin { width:42px; font-size:10px; padding:3px; border:1px solid var(--bd);
     border-radius:4px; text-align:center; }
+  table.rft th.subcol { min-width:34px; padding:4px 1px 3px; background:#eaedf2; }
+  table.rft th.subcol .sptest { padding:2px 3px; font-size:10px; }
+  table.rft th.subcol .sublbl { font-size:9px; font-weight:700; color:var(--muted); margin-top:2px; }
   table.rft th.metric { position:sticky; left:0; z-index:3; background:#f7f8fa;
     font-size:10px; font-weight:700; text-transform:uppercase; letter-spacing:.2px; color:var(--muted);
     text-align:left; padding:6px 8px; min-width:56px; white-space:nowrap; }
   table.rft tbody td { text-align:center; }
-  table.rft tbody td input { width:100%; min-width:46px; padding:9px 3px; border:0; border-radius:0;
-    text-align:center; font-size:12.5px; background:#fff; }
+  table.rft tbody td input { width:100%; min-width:34px; padding:9px 2px; border:0; border-radius:0;
+    text-align:center; font-size:11px; background:#fff; }
   table.rft tbody td input:focus { outline:2px solid var(--accent); outline-offset:-2px; }
   table.rft tbody tr:nth-child(even) td input { background:#fafbfc; }
 
@@ -145,11 +146,6 @@
   .rail .dims { display:grid; grid-template-columns:repeat(auto-fill,minmax(84px,1fr)); gap:8px; }
   .rail .dims label { margin:0; }
   .rail .dims input { padding:8px; text-align:center; }
-
-  .carrier-pick { display:inline-flex; gap:0; border:1px solid var(--bd); border-radius:var(--r-sm); overflow:hidden; }
-  .carrier-pick button { padding:9px 22px; font-size:14px; font-weight:700; background:#fff; color:var(--hd); border:0; border-right:1px solid var(--bd); }
-  .carrier-pick button:last-child { border-right:0; }
-  .carrier-pick button.on { background:var(--accent); color:#fff; }
 
   .sptest { padding:5px 8px; font-size:13px; line-height:1; border:1px solid var(--bd);
     background:#fff; border-radius:6px; vertical-align:middle; }
@@ -260,12 +256,7 @@
       <div><label>Overall Feasibility (auto from readings — editable)</label><input type="text" data-f="feasibility"></div>
     </div>
 
-    <label>Carrier being measured</label>
-    <div class="carrier-pick">
-      <button type="button" data-carrier="du" class="on">DU</button>
-      <button type="button" data-carrier="et">e&amp;</button>
-    </div>
-    <p class="hint">The table shows one carrier at a time — switch here to enter the other. Per row: <b>📶</b> reads RSRP / RSRQ / SINR / Frequency / Band from the modem (Android app; turn Location ON for band and frequency). Both carriers' values are kept and printed in the PDF.</p>
+    <p class="hint">Each location shows both carriers side by side. Per row: <b>📶 DU</b> / <b>📶 e&amp;</b> read RSRP / RSRQ / SINR / Frequency / Band from that SIM (Android app; turn Location ON for band and frequency). Both carriers' values are kept and printed in the PDF.</p>
 
     <h3>3.1 RF Measurements (Charging Area + Building Lobby)</h3>
     <div id="rf1" class="rf-wrap"></div>
@@ -333,7 +324,7 @@
     <button class="sm ghost" style="width:100%;margin-top:8px" onclick="sendReportTelegram()">✈️ Send to Telegram</button>
   </section>
 
-  <div class="stamp">v0.5.2</div>
+  <div class="stamp">v0.6.0</div>
 </main>
 
 <script src="vendor/pizzip.js"></script>
@@ -938,26 +929,32 @@ function rfLabels(id, n, b, p, mz){
 }
 function rfVal(id, ci, col){ return (rfModel[id] || {})[ci + "|" + col] || ""; }
 
+const CARRIERS = [["du","DU"],["et","e&amp;"]];
 function rfTable(id, cols){
   const editable = id !== "rf1";
-  const colHead = cols.map(({ci, label}) => `
-    <th class="loc" title="${esc(label)}">
-      <div class="colbtns">
-        <button type="button" class="sptest sigread" data-sig="${id}:${ci}" title="Read signal (Android app)">📶</button>
-      </div>
+  const locRow = cols.map(({ci, label}) => `
+    <th class="loc" colspan="${CARRIERS.length}" title="${esc(label)}">
       ${editable
         ? `<input class="vlabel-input" data-floorname="${ci}" value="${esc(label)}">`
         : `<div class="vlabel">${esc(label)}</div>`}
     </th>`).join("");
+  const carRow = cols.map(({ci}) => CARRIERS.map(([ck, cl]) => `
+    <th class="subcol">
+      <button type="button" class="sptest sigread" data-sig="${id}:${ci}:${ck}" title="Read ${cl} signal (Android app)">📶</button>
+      <div class="sublbl">${cl}</div>
+    </th>`).join("")).join("");
   const rowsHtml = METRICS.map(m => `
     <tr>
       <th class="metric">${METRIC_LBL[m]}</th>
-      ${cols.map(({ci}) => `
-        <td><input inputmode="numeric" data-rf="${id}" data-ri="${ci}" data-col="${activeCarrier}.${m}"
-             value="${esc(rfVal(id, ci, activeCarrier + "." + m))}"></td>`).join("")}
+      ${cols.map(({ci}) => CARRIERS.map(([ck]) => `
+        <td><input inputmode="numeric" data-rf="${id}" data-ri="${ci}" data-col="${ck}.${m}"
+             value="${esc(rfVal(id, ci, ck + "." + m))}"></td>`).join("")).join("")}
     </tr>`).join("");
-  return `<table class="rft" data-active="${activeCarrier}">
-    <thead><tr><th class="corner">${RF_CORNER[id] || ""}</th>${colHead}</tr></thead>
+  return `<table class="rft">
+    <thead>
+      <tr><th class="corner" rowspan="2">${RF_CORNER[id] || ""}</th>${locRow}</tr>
+      <tr>${carRow}</tr>
+    </thead>
     <tbody>${rowsHtml}</tbody></table>`;
 }
 function renderRf(id){ document.getElementById(id).innerHTML = rfTable(id, rfLabels(id)); }
@@ -1053,8 +1050,8 @@ function inNativeApp(){
 }
 
 async function onSignalRead(btn){
-  const [id, ri] = btn.dataset.sig.split(":");
-  const q = col => document.querySelector(`[data-rf="${id}"][data-ri="${ri}"][data-col="${activeCarrier}.${col}"]`);
+  const [id, ri, carrier] = btn.dataset.sig.split(":");
+  const q = col => document.querySelector(`[data-rf="${id}"][data-ri="${ri}"][data-col="${carrier}.${col}"]`);
   const CellSignal = getCellSignal();
   if (!CellSignal){
     showTip(inNativeApp()
@@ -1065,14 +1062,14 @@ async function onSignalRead(btn){
   const orig = btn.textContent;
   btn.disabled = true; btn.textContent = "…";
   try {
-    const r = await CellSignal.read({ carrier: activeCarrier });   // { tech, rsrp, rsrq, sinr?, band?, freq? }
+    const r = await CellSignal.read({ carrier });   // { tech, rsrp, rsrq, sinr?, band?, freq? }
     const set = (col, val) => {
       if (val === undefined || val === null || val === "") return;
       const el = q(col); if (!el) return;
       el.value = val; el.dispatchEvent(new Event("input", { bubbles:true }));
     };
     set("rsrp", r.rsrp); set("rsrq", r.rsrq); set("sinr", r.sinr); set("freq", r.freq); set("band", r.band);
-    let msg = `${activeCarrier.toUpperCase()} ${r.tech||""} · RSRP ${r.rsrp} RSRQ ${r.rsrq}` +
+    let msg = `${carrier.toUpperCase()} ${r.tech||""} · RSRP ${r.rsrp} RSRQ ${r.rsrq}` +
       (r.sinr != null ? ` SINR ${r.sinr}` : "");
     if (r.freq) msg += ` · ${r.freq} MHz`;
     if (r.band) msg += ` ${r.band}`;
@@ -1114,7 +1111,7 @@ async function runPermFlow(){
   // phone + location for signal (native)
   const CellSignal = getCellSignal();
   if (CellSignal){
-    try { await CellSignal.read({ carrier: activeCarrier }); sig = true; }
+    try { await CellSignal.read({ carrier:"du" }); sig = true; }
     catch (e) { sig = false; }
   } else {
     sig = true; // web: nothing to grant here
@@ -1128,12 +1125,6 @@ async function requestPerms(){
   if (all) { try { localStorage.setItem(PERMS_FLAG, "1"); } catch(e){} closePermGate(); }
 }
 
-let activeCarrier = "du";
-function setCarrier(c){
-  activeCarrier = c;
-  document.querySelectorAll("[data-carrier]").forEach(b => b.classList.toggle("on", b.dataset.carrier===c));
-  if (document.getElementById("rf1")) renderAllRf();
-}
 function showTip(msg){
   let t = document.getElementById("tip");
   if (!t){
@@ -1149,7 +1140,7 @@ function collect(){
   const s = { fields:{}, checklist:{}, rails:{}, pinout:[], rf:{ rf1:{}, rf2:{}, rf3:{} }, photos:[], panelPhotos:[],
     floorCount:$("#floorCount").value, basementCount:($("#basementCount")||{}).value || "0",
     podiumCount:($("#podiumCount")||{}).value || "0", mezzanine: mezzanineVal(),
-    floorNames: {...floorNames}, carrier:activeCarrier };
+    floorNames: {...floorNames} };
   document.querySelectorAll("[data-f]").forEach(el => s.fields[el.dataset.f] = (el.type === "checkbox") ? (el.checked ? "yes" : "") : el.value);
   document.querySelectorAll("[data-chk]").forEach(el => s.checklist[el.dataset.chk] = el.value);
   document.querySelectorAll("[data-rail]").forEach(r => {
@@ -1177,7 +1168,6 @@ function collect(){
 function restore(s, opts={}){
   if (!s) return;
   if (!opts.rfOnly){
-    if (s.carrier){ setCarrier(s.carrier); }
     Object.entries(s.fields||{}).forEach(([k,v]) => { const el=document.querySelector(`[data-f="${k}"]`); if (!el) return; if (el.type === "checkbox") el.checked = (v === "yes"); else el.value = v; });
     Object.entries(s.checklist||{}).forEach(([k,v]) => { const el=document.querySelector(`[data-chk="${k}"]`); if (el) el.value=v; });
     Object.entries(s.rails||{}).forEach(([rk,o]) => {
@@ -1438,7 +1428,6 @@ document.addEventListener("input", e => {
 { const fe = document.querySelector('[data-f="feasibility"]');
   feasManual = !!(fe && fe.value.trim());
   computeFeasibility(); }
-document.querySelectorAll("[data-carrier]").forEach(b => b.addEventListener("click", () => { setCarrier(b.dataset.carrier); save(); }));
 document.addEventListener("click", e => {
   const sig = e.target.closest(".sigread");
   if (sig){ onSignalRead(sig); return; }
