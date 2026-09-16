@@ -195,7 +195,6 @@
     <ul>
       <li><span class="ic">📶</span><span>Phone &amp; Location — read RSRP / RSRQ / SINR / frequency / band from the modem<br><span class="hint">Turn the Location toggle ON too, for the band and frequency value.</span></span><span class="st" data-pg="signal">—</span></li>
       <li><span class="ic">📷</span><span>Camera — take site photos in Section 5</span><span class="st" data-pg="camera">—</span></li>
-      <li><span class="ic">🌐</span><span>Network — run the download / upload speed test</span><span class="st ok" data-pg="net">on</span></li>
     </ul>
     <button class="block" id="pgAllow">Allow all</button>
     <button class="skip" id="pgSkip">Continue without — I'll allow later</button>
@@ -266,7 +265,7 @@
       <button type="button" data-carrier="du" class="on">DU</button>
       <button type="button" data-carrier="et">e&amp;</button>
     </div>
-    <p class="hint">The table shows one carrier at a time — switch here to enter the other. Per row: <b>📶</b> reads RSRP / RSRQ / SINR / Frequency / Band from the modem (Android app; turn Location ON for band and frequency). <b>⚡</b> runs a download / upload speed test and fills DL / UL. Both carriers' values are kept and printed in the PDF.</p>
+    <p class="hint">The table shows one carrier at a time — switch here to enter the other. Per row: <b>📶</b> reads RSRP / RSRQ / SINR / Frequency / Band from the modem (Android app; turn Location ON for band and frequency). Both carriers' values are kept and printed in the PDF.</p>
 
     <h3>3.1 RF Measurements (Charging Area + Building Lobby)</h3>
     <div id="rf1" class="rf-wrap"></div>
@@ -334,15 +333,15 @@
     <button class="sm ghost" style="width:100%;margin-top:8px" onclick="sendReportTelegram()">✈️ Send to Telegram</button>
   </section>
 
-  <div class="stamp">v0.5.1</div>
+  <div class="stamp">v0.5.2</div>
 </main>
 
 <script src="vendor/pizzip.js"></script>
 <script src="vendor/docxtemplater.js"></script>
 <script>
 const LS_KEY = "svs_draft_v3";
-const METRICS = ["rsrp","rsrq","sinr","freq","band","dl","ul"];
-const METRIC_LBL = { rsrp:"RSRP (dBm)", rsrq:"RSRQ (dB)", sinr:"SINR (dB)", freq:"Frequency (MHz)", band:"Band", dl:"DL (Mbps)", ul:"UL (Mbps)" };
+const METRICS = ["rsrp","rsrq","sinr","freq","band"];
+const METRIC_LBL = { rsrp:"RSRP (dBm)", rsrq:"RSRQ (dB)", sinr:"SINR (dB)", freq:"Frequency (MHz)", band:"Band" };
 const CHECKLIST = [
   "Elevator Bank(s) identified and access confirmed from main lobby",
   "Machine room / controller location identified for networking",
@@ -356,7 +355,6 @@ const CHECKLIST = [
   "Elevator car measurement (static) on each floor",
   "Shaft measurement (if permitted) on each floor",
   "Roof / riser measurement (if applicable)",
-  "Speed test / throughput recorded",
 ];
 const RF1_LOCS = ["Main lobby / reception", "Lift lobby GF", "d-bot charging point"];
 const RAILS = [
@@ -946,7 +944,6 @@ function rfTable(id, cols){
     <th class="loc" title="${esc(label)}">
       <div class="colbtns">
         <button type="button" class="sptest sigread" data-sig="${id}:${ci}" title="Read signal (Android app)">📶</button>
-        <button type="button" class="sptest" data-sp="${id}:${ci}" title="Speed test">⚡</button>
       </div>
       ${editable
         ? `<input class="vlabel-input" data-floorname="${ci}" value="${esc(label)}">`
@@ -1131,7 +1128,6 @@ async function requestPerms(){
   if (all) { try { localStorage.setItem(PERMS_FLAG, "1"); } catch(e){} closePermGate(); }
 }
 
-/* ---------- speed test (hosted only — sandbox blocks network) ---------- */
 let activeCarrier = "du";
 function setCarrier(c){
   activeCarrier = c;
@@ -1148,77 +1144,6 @@ function showTip(msg){
   t.textContent = msg; t.style.opacity = "1";
   clearTimeout(showTip._t); showTip._t = setTimeout(() => { t.style.opacity = "0"; }, 4000);
 }
-const SPEED_HOST = "https://speed.cloudflare.com";
-function timedFetch(url, opts, ms){
-  const ac = new AbortController();
-  const t = setTimeout(() => ac.abort(new Error("timeout")), ms);
-  return fetch(url, { ...opts, signal:ac.signal, cache:"no-store" }).finally(() => clearTimeout(t));
-}
-async function cfDown(bytes, ms){
-  const t0 = performance.now();
-  const r = await timedFetch(`${SPEED_HOST}/__down?bytes=${bytes}`, {}, ms);
-  if (!r.ok) throw new Error("down HTTP " + r.status);
-  const buf = await r.arrayBuffer();
-  return { bytes: buf.byteLength, ms: performance.now() - t0 };
-}
-async function cfUp(bytes, ms){
-  const t0 = performance.now();
-  const r = await timedFetch(`${SPEED_HOST}/__up`, { method:"POST", body:new Uint8Array(bytes) }, ms);
-  if (!r.ok) throw new Error("up HTTP " + r.status);
-  return { bytes, ms: performance.now() - t0 };
-}
-async function runSpeedTest(prog){
-  // ping — median of 5 tiny GETs
-  const pings = [];
-  for (let i=0;i<5;i++){ try { const d = await cfDown(1, 8000); pings.push(d.ms); } catch(_){} }
-  if (!pings.length) throw new Error("no reply from speed server");
-  pings.sort((a,b) => a-b);
-  const ping = Math.round(pings[Math.floor(pings.length/2)]);
-
-  // download — grow chunk size, stop after ~8s of transfer or on first big chunk
-  prog && prog("↓");
-  let dB=0, dMs=0;
-  for (const sz of [2e5, 1e6, 3e6, 6e6, 10e6]){
-    const d = await cfDown(sz, 20000);
-    dB += d.bytes; dMs += d.ms;
-    if (dMs > 8000) break;
-  }
-  const dl = +((dB*8/1e6) / (dMs/1000)).toFixed(1);
-
-  // upload — same idea, smaller
-  prog && prog("↑");
-  let uB=0, uMs=0;
-  for (const sz of [2e5, 1e6, 3e6, 6e6]){
-    const u = await cfUp(sz, 20000);
-    uB += u.bytes; uMs += u.ms;
-    if (uMs > 8000) break;
-  }
-  const ul = +((uB*8/1e6) / (uMs/1000)).toFixed(1);
-  return { dl, ul, ping };
-}
-async function onSpeedTest(btn){
-  const [id, ri] = btn.dataset.sp.split(":");
-  const q = col => document.querySelector(`[data-rf="${id}"][data-ri="${ri}"][data-col="${activeCarrier}.${col}"]`);
-  const dlIn = q("dl"), ulIn = q("ul");
-  if (!dlIn || !ulIn) return;
-  const orig = btn.textContent;
-  btn.disabled = true; btn.textContent = "…";
-  showTip("Speed test running (" + activeCarrier.toUpperCase() + ")…");
-  try {
-    const { dl, ul, ping } = await runSpeedTest(s => { btn.textContent = s; });
-    dlIn.value = dl; ulIn.value = ul;
-    dlIn.dispatchEvent(new Event("input", { bubbles:true }));
-    ulIn.dispatchEvent(new Event("input", { bubbles:true }));
-    (rfModel[id] = rfModel[id] || {})[ri + "|" + activeCarrier + ".ping"] = String(ping);
-    computeFeasibility(); save();
-    showTip(`${activeCarrier.toUpperCase()} · DL ${dl} / UL ${ul} Mbps · ping ${ping} ms`);
-  } catch (err) {
-    showTip("Speed test failed: " + (err && err.message ? err.message : "unknown") + ". Retry, or check signal / content blocker.");
-  } finally {
-    btn.disabled = false; btn.textContent = orig;
-  }
-}
-
 /* ---------- state collect / restore ---------- */
 function collect(){
   const s = { fields:{}, checklist:{}, rails:{}, pinout:[], rf:{ rf1:{}, rf2:{}, rf3:{} }, photos:[], panelPhotos:[],
@@ -1472,9 +1397,9 @@ function verdictOf(aR, aS){
 }
 /* averages for a set of RF tables, per carrier */
 function avgBlock(ids, car){
-  const g = { rsrp:[], rsrq:[], sinr:[], dl:[], ul:[], ping:[] };
+  const g = { rsrp:[], rsrq:[], sinr:[] };
   ids.forEach(id => Object.entries(rfModel[id] || {}).forEach(([k,v]) => {
-    const m = k.match(new RegExp("\\|" + car + "\\.(rsrp|rsrq|sinr|dl|ul|ping)$"));
+    const m = k.match(new RegExp("\\|" + car + "\\.(rsrp|rsrq|sinr)$"));
     if (!m) return;
     const n = parseFloat(v); if (isFinite(n)) g[m[1]].push(n);
   }));
@@ -1482,7 +1407,7 @@ function avgBlock(ids, car){
   const aR = _avg(g.rsrp), aS = _avg(g.sinr);
   return {
     rsrp:r1(aR), rsrq:r1(_avg(g.rsrq)), sinr:r1(aS),
-    dl:r1(_avg(g.dl)), ul:r1(_avg(g.ul)), ping:r1(_avg(g.ping)), jit:"",
+    dl:"", ul:"", ping:"", jit:"",   // docx template compat — speed test removed
     feas: verdictOf(aR, aS),
   };
 }
@@ -1517,8 +1442,6 @@ document.querySelectorAll("[data-carrier]").forEach(b => b.addEventListener("cli
 document.addEventListener("click", e => {
   const sig = e.target.closest(".sigread");
   if (sig){ onSignalRead(sig); return; }
-  const sp = e.target.closest(".sptest");
-  if (sp){ onSpeedTest(sp); return; }
   if (e.target.closest("[data-fs-enter]")){ enterDrawFullscreen(e.target.closest("[data-draw-area]")); return; }
   if (e.target.closest("[data-fs-exit]")){ exitDrawFullscreen(); return; }
 });
