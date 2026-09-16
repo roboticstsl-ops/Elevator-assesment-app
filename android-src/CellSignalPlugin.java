@@ -12,6 +12,7 @@ import android.telephony.CellInfoNr;
 import android.telephony.CellSignalStrength;
 import android.telephony.CellSignalStrengthLte;
 import android.telephony.CellSignalStrengthNr;
+import android.telephony.PhoneStateListener;
 import android.telephony.SignalStrength;
 import android.telephony.SubscriptionInfo;
 import android.telephony.SubscriptionManager;
@@ -132,22 +133,53 @@ public class CellSignalPlugin extends Plugin {
         return false;
     }
 
-    /* ---- force a fresh cell-info read (API 29+), fall back to cached ---- */
+    /* ---- force a fresh cell-info read, scoped to the right SIM ----
+     * requestCellInfoUpdate()/getAllCellInfo() on a subId-scoped TelephonyManager
+     * are NOT reliably per-subscription on many devices (Samsung included) -- they
+     * can silently hand back whichever SIM's cells the modem reports first,
+     * regardless of which subId's TelephonyManager made the call. That's what was
+     * producing identical band/frequency for both carriers. PhoneStateListener,
+     * registered on that same subId-scoped instance, IS documented by Android to
+     * scope its callbacks to that specific subscription, so it's used as the
+     * primary source here; the old request/getAll path stays only as a fallback
+     * for when the listener times out. */
     @SuppressLint("MissingPermission")
+    @SuppressWarnings({"deprecation", "unchecked"})
     private List<CellInfo> freshCellInfo(TelephonyManager tm) {
+        final CountDownLatch latch = new CountDownLatch(1);
+        final List<CellInfo>[] box = new List[]{ null };
+        final PhoneStateListener[] pslHolder = new PhoneStateListener[1];
+        try {
+            getActivity().runOnUiThread(() -> {
+                PhoneStateListener psl = new PhoneStateListener() {
+                    @Override public void onCellInfoChanged(List<CellInfo> cellInfo) {
+                        box[0] = cellInfo;
+                        latch.countDown();
+                    }
+                };
+                pslHolder[0] = psl;
+                tm.listen(psl, PhoneStateListener.LISTEN_CELL_INFO);
+            });
+            latch.await(3, TimeUnit.SECONDS);
+        } catch (Throwable ignore) {}
+        if (pslHolder[0] != null) {
+            final PhoneStateListener psl = pslHolder[0];
+            try { getActivity().runOnUiThread(() -> tm.listen(psl, PhoneStateListener.LISTEN_NONE)); } catch (Throwable ignore) {}
+        }
+        if (box[0] != null && !box[0].isEmpty()) return box[0];
+
         if (Build.VERSION.SDK_INT >= 29) {
-            final CountDownLatch latch = new CountDownLatch(1);
-            @SuppressWarnings("unchecked")
-            final List<CellInfo>[] box = new List[]{ null };
+            final CountDownLatch latch2 = new CountDownLatch(1);
+            final List<CellInfo>[] box2 = new List[]{ null };
             try {
                 tm.requestCellInfoUpdate(Executors.newSingleThreadExecutor(),
                     new TelephonyManager.CellInfoCallback() {
-                        @Override public void onCellInfo(List<CellInfo> ci) { box[0] = ci; latch.countDown(); }
-                        @Override public void onError(int code, Throwable e) { latch.countDown(); }
+                        @Override public void onCellInfo(List<CellInfo> ci) { box2[0] = ci; latch2.countDown(); }
+                        @Override public void onError(int code, Throwable e) { latch2.countDown(); }
                     });
-                latch.await(3, TimeUnit.SECONDS);
+                latch2.await(3, TimeUnit.SECONDS);
             } catch (Throwable ignore) {}
-            if (box[0] != null && !box[0].isEmpty()) return box[0];
+            if (box2[0] != null && !box2[0].isEmpty()) return box2[0];
         }
         try { return tm.getAllCellInfo(); } catch (SecurityException se) { return null; }
     }
