@@ -284,7 +284,7 @@
         <label style="margin:0">Mezzanine floor (M, right after Ground)</label></div>
       <button class="sm" onclick="buildFloorTables()">Generate floor rows</button>
     </div>
-    <p class="hint">Regenerating keeps values already entered (matched by row order). Order is Basement → Podium → Ground → Mezzanine (if ticked) → 1, 2, 3… Every floor name below is editable — tap the name in the 3.2 table header and retype it (e.g. "B Podium", "Basement 1"); the same name is used in 3.3 automatically.</p>
+    <p class="hint">Regenerating keeps values already entered (matched by row order). Order is Basement → Ground → Mezzanine (if ticked) → Podium → 1, 2, 3… Every floor name below is editable — tap the name in the 3.2 table header and retype it (e.g. "B Podium", "Basement 1"); the same name is used in 3.3 automatically.</p>
 
     <h3>3.2 RF Measurements (On top of elevator cabin)</h3>
     <div id="rf2" class="rf-wrap"></div>
@@ -334,7 +334,7 @@
     <button class="sm ghost" style="width:100%;margin-top:8px" onclick="sendReportTelegram()">✈️ Send to Telegram</button>
   </section>
 
-  <div class="stamp">v0.5.0</div>
+  <div class="stamp">v0.5.1</div>
 </main>
 
 <script src="vendor/pizzip.js"></script>
@@ -922,7 +922,7 @@ function basementCountVal(){ return Math.max(0, Math.min(20, parseInt(($("#basem
 function podiumCountVal(){ return Math.max(0, Math.min(20, parseInt(($("#podiumCount")||{}).value, 10) || 0)); }
 function mezzanineVal(){ return !!($("#mezzanine") && $("#mezzanine").checked); }
 // Returns [{ci, label}, …] in display order: Basement (deepest first) →
-// Podium (P<count>..P1) → Ground → Mezzanine (if ticked) → 1..N.
+// Ground → Mezzanine (if ticked) → Podium (P1..P<count>) → 1..N.
 // rf1's three fixed locations use ci 0/1/2 instead (unaffected by any of this).
 function rfLabels(id, n, b, p, mz){
   if (id === "rf1") return RF1_LOCS.map((label, ci) => ({ ci, label }));
@@ -932,9 +932,9 @@ function rfLabels(id, n, b, p, mz){
   const mezz = (mz == null) ? mezzanineVal() : mz;
   const out = [];
   for (let i = bcnt; i >= 1; i--) out.push({ ci: -i, label: floorLabel(-i) });
-  for (let i = pcnt; i >= 1; i--) out.push({ ci: "p"+i, label: floorLabel("p"+i) });
   out.push({ ci: 0, label: floorLabel(0) });
   if (mezz) out.push({ ci: "m", label: floorLabel("m") });
+  for (let i = 1; i <= pcnt; i++) out.push({ ci: "p"+i, label: floorLabel("p"+i) });
   for (let i = 1; i <= cnt; i++) out.push({ ci: i, label: floorLabel(i) });
   return out;
 }
