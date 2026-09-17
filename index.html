@@ -329,7 +329,7 @@
     <button class="sm ghost" style="width:100%;margin-top:8px" onclick="sendReportTelegram()">✈️ Send to Telegram</button>
   </section>
 
-  <div class="stamp">v0.6.9</div>
+  <div class="stamp">v0.6.10</div>
 </main>
 
 <script src="vendor/pizzip.js"></script>
@@ -709,6 +709,7 @@ function initCanvas(railEl){
   hud.className = "draw-hud"; hud.hidden = true;
   svg.parentNode.appendChild(hud);   // .canvas-wrap
   applyVB(svg);
+  renderCanvas(svg);   // paint the initial state -- restore() only re-paints rails that have a saved draft
   const showHud = (len, ang) => {
     hud.hidden = false;
     hud.textContent = "L " + Math.round(len) + "  ·  " + Math.round(((ang*180/Math.PI)%360+360)%360) + "°";
