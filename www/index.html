@@ -329,7 +329,7 @@
     <button class="sm ghost" style="width:100%;margin-top:8px" onclick="sendReportTelegram()">✈️ Send to Telegram</button>
   </section>
 
-  <div class="stamp">v0.6.11</div>
+  <div class="stamp">v0.6.12</div>
 </main>
 
 <script src="vendor/pizzip.js"></script>
@@ -417,10 +417,10 @@ const STAMP_KIND = { stampGreen:"green", stampRedX:"redx", stampEmergency:"emerg
 // Fixed placement size -- stamps aren't drag-to-size, a tap drops one at
 // exactly that size and spot; resize afterward only via its own handles.
 const STAMP_SIZE = {
-  green:      { w:36,  h:36 },
-  redx:       { w:36,  h:36 },
-  emergency:  { w:120, h:32 },
-  socket:     { w:36,  h:36 },
+  green:      { w:22, h:22 },
+  redx:       { w:22, h:22 },
+  emergency:  { w:74, h:20 },
+  socket:     { w:22, h:22 },
 };
 function drawToolbar(railKey){
   return `<div class="draw-tools">` +
@@ -650,7 +650,7 @@ const DEFAULT_RAIL_LABELS = { top: [
 
 function renderCanvas(svg){
   const v = svg._vb || [0,0,340,240];
-  let m = svg._bgImage ? `<image href="${svg._bgImage}" xlink:href="${svg._bgImage}" x="0" y="0" width="340" height="240" preserveAspectRatio="xMidYMid meet"/>` : "";
+  let m = svg._bgImage ? `<image href="${svg._bgImage}" xlink:href="${svg._bgImage}" x="0" y="0" width="340" height="240" preserveAspectRatio="none"/>` : "";
   (svg._bgLabels || []).forEach(l => {
     m += `<text x="${l.x}" y="${l.y}" font-size="22" font-weight="800" fill="#1652c9" font-family="Arial, sans-serif"`
       + ` text-anchor="middle" dominant-baseline="middle" paint-order="stroke" stroke="#fff" stroke-width="4">${esc(l.label)}</text>`;
