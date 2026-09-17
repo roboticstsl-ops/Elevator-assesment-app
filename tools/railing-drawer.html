@@ -222,7 +222,25 @@ function arrowHead(x1,y1,x2,y2){
 function shapesToSvg(shapes, sel){
   return (shapes||[]).map((s,i) => {
     let m;
-    if (s.t==="rect"){ const b0 = shapeBox(s); m = `<rect x="${b0.x}" y="${b0.y}" width="${b0.w}" height="${b0.h}" fill="none" stroke="#111" stroke-width="2"/>`; }
+    if (s.t==="rect"){
+      const b0 = shapeBox(s);
+      if (s.kind==="green"){
+        m = `<rect x="${b0.x}" y="${b0.y}" width="${b0.w}" height="${b0.h}" rx="4" fill="#1fa24a" stroke="#0d6b2c" stroke-width="2"/>`;
+      } else if (s.kind==="redx"){
+        const sw = Math.max(3, Math.min(b0.w,b0.h)*0.1);
+        m = `<rect x="${b0.x}" y="${b0.y}" width="${b0.w}" height="${b0.h}" rx="4" fill="#e0342a" stroke="#8c1a13" stroke-width="2"/>`
+          + `<line x1="${b0.x+b0.w*0.18}" y1="${b0.y+b0.h*0.18}" x2="${b0.x+b0.w*0.82}" y2="${b0.y+b0.h*0.82}" stroke="#111" stroke-width="${sw}" stroke-linecap="round"/>`
+          + `<line x1="${b0.x+b0.w*0.82}" y1="${b0.y+b0.h*0.18}" x2="${b0.x+b0.w*0.18}" y2="${b0.y+b0.h*0.82}" stroke="#111" stroke-width="${sw}" stroke-linecap="round"/>`;
+      } else if (s.kind==="emergency"){
+        m = `<rect x="${b0.x}" y="${b0.y}" width="${b0.w}" height="${b0.h}" rx="4" fill="#fff" stroke="#111" stroke-width="2"/>`
+          + `<text x="${b0.x+b0.w/2}" y="${b0.y+b0.h/2}" font-size="${Math.max(9,Math.min(b0.h*0.34, b0.w/8.2))}" font-weight="700" fill="#111" font-family="Arial, sans-serif" text-anchor="middle" dominant-baseline="middle">Emergency Door</text>`;
+      } else if (s.kind==="socket"){
+        m = `<rect x="${b0.x}" y="${b0.y}" width="${b0.w}" height="${b0.h}" rx="4" fill="#fff" stroke="#111" stroke-width="2"/>`
+          + `<text x="${b0.x+b0.w/2}" y="${b0.y+b0.h/2}" font-size="${Math.max(14,Math.min(b0.w,b0.h)*0.6)}" text-anchor="middle" dominant-baseline="central">🔌</text>`;
+      } else {
+        m = `<rect x="${b0.x}" y="${b0.y}" width="${b0.w}" height="${b0.h}" fill="none" stroke="#111" stroke-width="2"/>`;
+      }
+    }
     else if (s.t==="line") m = `<line x1="${s.x1}" y1="${s.y1}" x2="${s.x2}" y2="${s.y2}" stroke="#111" stroke-width="2"/>`;
     else if (s.t==="arrow") m = `<line x1="${s.x1}" y1="${s.y1}" x2="${s.x2}" y2="${s.y2}" stroke="#111" stroke-width="2"/>` + arrowHead(s.x1,s.y1,s.x2,s.y2);
     else if (s.t==="path") m = `<polyline points="${s.d.map(p=>p[0]+','+p[1]).join(' ')}" fill="none" stroke="#111" stroke-width="2" stroke-linejoin="round" stroke-linecap="round"/>`;
@@ -272,10 +290,23 @@ const RAILS = [
 ];
 const railPick = document.getElementById("railPick");
 RAILS.forEach(r => railPick.add(new Option(r.name, r.key)));
+// Stamps: click one, then click (or drag to size) on the drawing to drop it.
+// Each is really just a "rect" shape tagged with a kind, so it reuses the
+// exact same move/resize handles every other box already has -- adjustable
+// size for free, no separate code path needed.
+const STAMP_TOOLS = [
+  ["stampGreen", "🟩 Green box"],
+  ["stampRedX", "🟥 Red ✕ box"],
+  ["stampEmergency", "🚪 Emergency Door"],
+  ["stampSocket", "🔌 Power socket"],
+];
+const STAMP_KIND = { stampGreen:"green", stampRedX:"redx", stampEmergency:"emergency", stampSocket:"socket" };
 const toolRow = document.getElementById("toolRow");
 toolRow.innerHTML = SHAPE_TOOLS.map(([t,l]) => `<button data-tool="${t}"${t==="measure"?' class="on"':''}>${l}</button>`).join("")
   + `<span class="arm" data-arm></span>`
-  + `<button data-act="undo">↩︎ Undo</button><button data-act="clear">Clear</button>`;
+  + `<button data-act="undo">↩︎ Undo</button><button data-act="clear">Clear</button>`
+  + `<span style="font-size:11px;font-weight:700;text-transform:uppercase;color:#6b7280;margin-left:8px">Stamps:</span>`
+  + STAMP_TOOLS.map(([t,l]) => `<button data-tool="${t}">${l}</button>`).join("");
 
 const svg = document.getElementById("canvas");
 const dimsEl = document.getElementById("dims");
@@ -340,6 +371,12 @@ svg.addEventListener("pointerdown", e => {
       drag = { mode:"meas", snapped:true }; svg.setPointerCapture(e.pointerId);
       renderCanvas(svg); return;
     }
+    if (STAMP_KIND[svg._tool]){
+      const s = { t:"rect", x:p.x, y:p.y, w:0, h:0, kind:STAMP_KIND[svg._tool] };
+      svg._shapes.push(s); svg._sel = svg._shapes.length-1;
+      drag = { mode:"draw", snapped:true }; svg.setPointerCapture(e.pointerId);
+      renderCanvas(svg); return;
+    }
   }
   if (svg._sel>=0){
     const hit = shapeHandles(svg._shapes[svg._sel]).find(h => Math.hypot(p.x-h.x, p.y-h.y) <= 12);
@@ -372,6 +409,11 @@ svg.addEventListener("pointermove", e => {
   if (drag.mode==="meas"){
     s.x2 = p.x; s.y2 = p.y;
     showHud(Math.hypot(p.x-s.x1,p.y-s.y1), Math.atan2(p.y-s.y1,p.x-s.x1));
+    renderCanvas(svg); return;
+  }
+  if (drag.mode==="draw"){
+    s.w = raw.x - s.x; s.h = raw.y - s.y;
+    showHud(Math.abs(s.w), 0);
     renderCanvas(svg); return;
   }
   if (drag.mode==="dim"){
@@ -438,6 +480,16 @@ const endDrag = e => {
   if (mode==="resize"){
     const s = svg._shapes[svg._sel];
     if (s && s.t==="dim"){ const inp = dimsEl.querySelector(`[data-dim="${s.label}"]`); if (inp) inp.value = Math.round(Math.hypot(s.x2-s.x1, s.y2-s.y1)); }
+  }
+  if (mode==="draw"){
+    const s = svg._shapes[svg._sel];
+    if (s.w<0){ s.x+=s.w; s.w=-s.w; }
+    if (s.h<0){ s.y+=s.h; s.h=-s.h; }
+    // a plain click (no real drag) drops a sensible default size instead of a sliver
+    const DEFAULT_W = { green:50, redx:50, emergency:170, socket:50 }[s.kind] || 60;
+    const DEFAULT_H = { green:50, redx:50, emergency:44, socket:50 }[s.kind] || 60;
+    if (s.w<10 && s.h<10){ s.w = DEFAULT_W; s.h = DEFAULT_H; }
+    renderCanvas(svg);
   }
   if (mode==="pen"){
     const s = svg._shapes[svg._sel];
