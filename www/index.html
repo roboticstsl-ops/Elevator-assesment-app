@@ -329,7 +329,7 @@
     <button class="sm ghost" style="width:100%;margin-top:8px" onclick="sendReportTelegram()">✈️ Send to Telegram</button>
   </section>
 
-  <div class="stamp">v0.6.10</div>
+  <div class="stamp">v0.6.11</div>
 </main>
 
 <script src="vendor/pizzip.js"></script>
@@ -414,6 +414,14 @@ const STAMP_TOOLS = [
   ["stampSocket", "🔌 Power socket"],
 ];
 const STAMP_KIND = { stampGreen:"green", stampRedX:"redx", stampEmergency:"emergency", stampSocket:"socket" };
+// Fixed placement size -- stamps aren't drag-to-size, a tap drops one at
+// exactly that size and spot; resize afterward only via its own handles.
+const STAMP_SIZE = {
+  green:      { w:36,  h:36 },
+  redx:       { w:36,  h:36 },
+  emergency:  { w:120, h:32 },
+  socket:     { w:36,  h:36 },
+};
 function drawToolbar(railKey){
   return `<div class="draw-tools">` +
       SHAPE_TOOLS.map(([t,l]) => `<button type="button" data-tool="${t}"${t==="measure"?' class="on"':''}>${l}</button>`).join("") +
@@ -760,10 +768,23 @@ function initCanvas(railEl){
         renderCanvas(svg); return;
       }
       if (STAMP_KIND[svg._tool]){
-        const s = { t:"rect", x:p.x, y:p.y, w:0, h:0, kind:STAMP_KIND[svg._tool] };
+        // Tapping an existing stamp moves it instead of stacking a new one
+        // on top -- press and hold it and it follows your finger.
+        const hitI = hitShape(svg._shapes, p);
+        if (hitI >= 0){
+          svg._sel = hitI; renderCanvas(svg);
+          drag = { mode:"move", start:p, orig:JSON.parse(JSON.stringify(svg._shapes[hitI])) };
+          svg.setPointerCapture(e.pointerId); return;
+        }
+        const kind = STAMP_KIND[svg._tool];
+        const sz = STAMP_SIZE[kind] || { w:60, h:60 };
+        const s = { t:"rect", x:p.x-sz.w/2, y:p.y-sz.h/2, w:sz.w, h:sz.h, kind };
         svg._shapes.push(s); svg._sel = svg._shapes.length-1;
-        drag = { mode:"draw", snapped:true }; svg.setPointerCapture(e.pointerId);
-        renderCanvas(svg); return;
+        renderCanvas(svg); save();
+        // Arm a move-drag right away too, so holding and dragging without
+        // lifting your finger fine-positions it on the same touch.
+        drag = { mode:"move", start:p, orig:JSON.parse(JSON.stringify(s)) };
+        svg.setPointerCapture(e.pointerId); return;
       }
     }
     if (svg._sel>=0){
