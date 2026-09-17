@@ -3,6 +3,7 @@ package com.tsl.rfsurvey;
 import android.Manifest;
 import android.annotation.SuppressLint;
 import android.content.Context;
+import android.location.LocationManager;
 import android.os.Build;
 import android.telephony.CellIdentityLte;
 import android.telephony.CellIdentityNr;
@@ -88,8 +89,18 @@ public class CellSignalPlugin extends Plugin {
             if (!gotSignal) gotSignal = fromCellInfo(cells, r);   // fallback for signal
             try { addBand(cells, r); } catch (Throwable ignore) {} // best-effort
 
-            boolean locOk = getPermissionState("location") == PermissionState.GRANTED;
-            if (!r.has("band")) r.put("bandHint", locOk ? "no-cell-identity" : "need-location");
+            if (!r.has("band")) {
+                boolean permOk = getPermissionState("location") == PermissionState.GRANTED;
+                boolean toggleOn = isLocationServiceOn();
+                // Cell identity (band/frequency) needs BOTH the app permission AND the
+                // phone's system Location toggle -- granting the permission alone (what
+                // the in-app permission gate does) isn't enough, and that mismatch is
+                // exactly what was silently hiding band/frequency on some devices.
+                String hint = !permOk ? "need-location-permission"
+                            : !toggleOn ? "need-location-toggle"
+                            : "no-cell-identity";
+                r.put("bandHint", hint);
+            }
 
             if (!r.has("rsrp") && !r.has("rsrq")) {
                 call.reject("No signal data — check the SIM is active, then retry");
@@ -249,6 +260,21 @@ public class CellSignalPlugin extends Plugin {
 
     private void putFreq(JSObject r, Double freqMhz) {
         if (freqMhz != null) r.put("freq", Math.round(freqMhz * 10) / 10.0);
+    }
+
+    /* System-level Location toggle (Settings > Location) -- separate from the app's
+     * own ACCESS_FINE_LOCATION permission. Cell identity (band/frequency) needs
+     * both; the permission alone silently yields no band/frequency at all. */
+    private boolean isLocationServiceOn() {
+        try {
+            LocationManager lm = (LocationManager) getContext().getSystemService(Context.LOCATION_SERVICE);
+            if (lm == null) return false;
+            if (Build.VERSION.SDK_INT >= 28) return lm.isLocationEnabled();
+            return lm.isProviderEnabled(LocationManager.GPS_PROVIDER)
+                || lm.isProviderEnabled(LocationManager.NETWORK_PROVIDER);
+        } catch (Throwable ignore) {
+            return false;
+        }
     }
 
     /* ---- dual-SIM: pick the subscription whose carrier matches ---- */

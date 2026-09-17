@@ -323,7 +323,7 @@
     <button class="sm ghost" style="width:100%;margin-top:8px" onclick="sendReportTelegram()">✈️ Send to Telegram</button>
   </section>
 
-  <div class="stamp">v0.6.3</div>
+  <div class="stamp">v0.6.4</div>
 </main>
 
 <script src="vendor/pizzip.js"></script>
@@ -1026,7 +1026,8 @@ async function onSignalRead(btn){
       (r.sinr != null ? ` SINR ${r.sinr}` : "");
     if (r.freq) msg += ` · ${r.freq} MHz`;
     if (r.band) msg += ` ${r.band}`;
-    else if (r.bandHint === "need-location") msg += " · Band: allow Location + turn Location ON, then retry";
+    else if (r.bandHint === "need-location-toggle") msg += " · Band/Freq need Location turned ON in Android Settings (the app permission alone isn't enough) — turn it on, then retry";
+    else if (r.bandHint === "need-location-permission") msg += " · Band/Freq need Location permission — allow it in Permissions, then retry";
     else msg += " · Band unavailable from this cell — type it";
     showTip(msg);
   } catch (err) {
