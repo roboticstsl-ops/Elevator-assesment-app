@@ -109,6 +109,11 @@
   .rail h3 { margin-top:0; }
   .rail-dia { display:block; width:100%; max-width:420px; height:auto; margin:2px 0 8px;
     border:1px solid var(--bd-soft); border-radius:6px; background:#fff; }
+  .tpl-bar { display:flex; align-items:center; justify-content:space-between; gap:8px;
+    padding:8px 10px; border-radius:var(--r-sm); margin-bottom:6px; background:var(--accent-soft); }
+  .tpl-bar .tpl-status { font-size:12.5px; font-weight:650; color:var(--hd); }
+  .tpl-bar button { padding:7px 12px; font-size:12.5px; min-height:0; white-space:nowrap; }
+  [data-tool-rows][hidden] { display:none; }
   .draw-tools { display:flex; flex-wrap:wrap; gap:7px; margin:6px 0; align-items:center; }
   .draw-tools button { padding:11px 14px; font-size:14px; min-height:44px; background:#fff; color:var(--hd); border:1px solid var(--bd); }
   .draw-tools button.on { background:var(--hd); color:#fff; }
@@ -135,6 +140,7 @@
   .draw-area:fullscreen, .draw-area:-webkit-full-screen {
     background:#fff; display:flex; flex-direction:column; padding:10px; overflow:auto; }
   .draw-area:fullscreen .draw-tools, .draw-area:-webkit-full-screen .draw-tools { flex:none; }
+  .draw-area:fullscreen .tpl-bar, .draw-area:-webkit-full-screen .tpl-bar { flex:none; }
   .draw-area:fullscreen .canvas-wrap, .draw-area:-webkit-full-screen .canvas-wrap { flex:1; min-height:0; }
   .draw-area:fullscreen .draw-canvas, .draw-area:-webkit-full-screen .draw-canvas { width:100%; height:100%; }
   .draw-area:fullscreen .fs-enter, .draw-area:-webkit-full-screen .fs-enter { display:none; }
@@ -323,13 +329,22 @@
     <button class="sm ghost" style="width:100%;margin-top:8px" onclick="sendReportTelegram()">✈️ Send to Telegram</button>
   </section>
 
-  <div class="stamp">v0.6.4</div>
+  <div class="stamp">v0.6.5</div>
 </main>
 
 <script src="vendor/pizzip.js"></script>
 <script src="vendor/docxtemplater.js"></script>
 <script>
 const LS_KEY = "svs_draft_v3";
+// Railing diagrams, drawn once and reused across every report -- separate
+// from LS_KEY (the per-report draft) so "Start Fresh" / a new site visit
+// never wipes them. Keyed by rail.key ("top"/"rear"/"left"/"right").
+const RAIL_TPL_KEY = "svs_rail_templates_v1";
+function loadRailTemplates(){ try { return JSON.parse(localStorage.getItem(RAIL_TPL_KEY) || "{}"); } catch(e){ return {}; } }
+function saveRailTemplate(key, shapes){
+  const t = loadRailTemplates(); t[key] = shapes;
+  try { localStorage.setItem(RAIL_TPL_KEY, JSON.stringify(t)); } catch(e){}
+}
 const METRICS = ["rsrp","rsrq","sinr","freq","band"];
 const METRIC_LBL = { rsrp:"RSRP (dBm)", rsrq:"RSRQ (dB)", sinr:"SINR (dB)", freq:"Frequency (MHz)", band:"Band" };
 const CHECKLIST = [
@@ -595,10 +610,33 @@ function renderCanvas(svg){
 }
 function initCanvas(railEl){
   const svg = railEl.querySelector("[data-canvas]");
-  svg._shapes = []; svg._tool = "measure"; svg._sel = -1; svg._hist = [];
+  const railKey = railEl.dataset.rail;
+  const tpl = loadRailTemplates()[railKey];
+  svg._shapes = tpl ? JSON.parse(JSON.stringify(tpl)) : [];
+  svg._locked = !!tpl;
+  svg._tool = "measure"; svg._sel = -1; svg._hist = [];
   svg._grid = false; svg._ortho = true; svg._smart = true; svg._vb = [0,0,340,240];
   let drag = null;
   const armSpan = railEl.querySelector("[data-arm]");
+  const toolRows = railEl.querySelector("[data-tool-rows]");
+  const tplStatus = railEl.querySelector("[data-tpl-status]");
+  const tplToggle = railEl.querySelector("[data-tpl-toggle]");
+  const tplHint = railEl.querySelector("[data-tpl-hint]");
+  const LOCKED_HINT = "The diagram is fixed — just fill the A, B, C… mm boxes below from your own tape measurements. Tap ✏️ Edit drawing only if the physical shape actually changed.";
+  const UNLOCKED_HINT = "Draw this railing once (📏 Measure drags fill A, B, C… automatically; ✏️ Pen for a rough outline). Once it looks right, tap ✓ Done — every future report reuses this exact drawing and you'll only ever type numbers.";
+  const renderTplBar = () => {
+    svg.style.pointerEvents = svg._locked ? "none" : "";
+    toolRows.hidden = svg._locked;
+    tplStatus.textContent = svg._locked ? "🔒 Fixed diagram" : "✏️ Drawing — not locked yet";
+    tplToggle.textContent = svg._locked ? "✏️ Edit drawing" : "✓ Done — lock it in";
+    tplHint.textContent = svg._locked ? LOCKED_HINT : UNLOCKED_HINT;
+  };
+  tplToggle.addEventListener("click", () => {
+    if (svg._locked){ svg._locked = false; }
+    else { saveRailTemplate(railKey, svg._shapes); svg._locked = true; save(); }
+    renderTplBar();
+  });
+  renderTplBar();
   const hud = document.createElement("div");
   hud.className = "draw-hud"; hud.hidden = true;
   svg.parentNode.appendChild(hud);   // .canvas-wrap
@@ -832,14 +870,18 @@ function buildRails(){
     <div class="rail" data-rail="${r.key}">
       <h3>${r.name}</h3>
       <div class="draw-area" data-draw-area>
-        ${drawToolbar()}
+        <div class="tpl-bar" data-tpl-bar>
+          <span class="tpl-status" data-tpl-status></span>
+          <button type="button" class="sm" data-tpl-toggle></button>
+        </div>
+        <div data-tool-rows>${drawToolbar()}</div>
         <div class="canvas-wrap">
           <svg class="draw-canvas" data-canvas viewBox="0 0 340 240"></svg>
           <button type="button" class="fs-enter" data-fs-enter title="Fullscreen — more room to draw">⛶ Fullscreen</button>
           <button type="button" class="fs-exit" data-fs-exit title="Exit fullscreen">✓ Submit</button>
         </div>
       </div>
-      <p class="hint"><b>📏 Measure is already selected</b> — tap ⛶ Fullscreen first, then just drag once per side; each drag fills the next A, B, C… mm box and Measure stays selected, so a whole railing is drag, drag, drag with no re-tapping. <b>✏️ Pen</b> only if you also want to rough-sketch the shape (auto-straightened). <b>Undo</b> steps back one action; <b>Clear</b> wipes the whole drawing. The view re-centers itself after each drag. Only letters with a value go into the report — the drawing itself isn't printed. <b>✓ Submit</b> in the corner exits fullscreen.</p>
+      <p class="hint" data-tpl-hint></p>
       <div class="dims">
         ${r.letters.map(L => `<div><label>${L} (mm)</label><input type="text" inputmode="numeric" data-dim="${L}"></div>`).join("")}
       </div>
