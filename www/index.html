@@ -109,16 +109,16 @@
   .rail h3 { margin-top:0; }
   .rail-dia { display:block; width:100%; max-width:420px; height:auto; margin:2px 0 8px;
     border:1px solid var(--bd-soft); border-radius:6px; background:#fff; }
-  .draw-tools { display:flex; flex-wrap:wrap; gap:6px; margin:6px 0; align-items:center; }
-  .draw-tools button { padding:7px 11px; font-size:13px; background:#fff; color:var(--hd); border:1px solid var(--bd); }
+  .draw-tools { display:flex; flex-wrap:wrap; gap:7px; margin:6px 0; align-items:center; }
+  .draw-tools button { padding:11px 14px; font-size:14px; min-height:44px; background:#fff; color:var(--hd); border:1px solid var(--bd); }
   .draw-tools button.on { background:var(--hd); color:#fff; }
   .draw-tools .lbl-in { width:110px; padding:7px 9px; border:1px solid var(--bd); border-radius:6px; font-size:13px; }
-  .draw-canvas { border:1px solid var(--bd); border-radius:var(--r-sm); background:#fff; touch-action:none; width:100%; }
+  .draw-canvas { border:1px solid var(--bd); border-radius:var(--r-sm); background:#fff; touch-action:none; width:100%; min-height:280px; }
   .draw-canvas.arming { border-color:var(--accent); box-shadow:0 0 0 3px var(--accent-soft); }
   .draw-tools .arm { font-size:12px; color:var(--accent); font-weight:700; }
   .draw-tools .arm:empty { display:none; }
   .draw-tools.cad { margin-top:0; }
-  .draw-tools.cad button { padding:6px 9px; font-size:12px; }
+  .draw-tools.cad button { padding:9px 11px; font-size:12.5px; min-height:40px; }
   .draw-tools.cad button.on { background:var(--accent); color:#fff; border-color:var(--accent); }
   .canvas-wrap { position:relative; }
   .draw-hud { position:absolute; top:6px; left:8px; z-index:2;
@@ -130,8 +130,8 @@
      grows to fill the rest, and ✓ Submit (hidden otherwise) appears fixed
      in the corner to exit. Landscape is requested via screen.orientation
      from JS once fullscreen is actually active. */
-  .fs-enter { position:absolute; top:6px; right:8px; z-index:2; padding:6px 10px; font-size:12px;
-    background:var(--hd); color:#fff; border:none; border-radius:6px; }
+  .fs-enter { position:absolute; top:6px; right:8px; z-index:2; padding:10px 16px; font-size:14px; font-weight:700;
+    background:var(--accent); color:#fff; border:none; border-radius:8px; box-shadow:0 2px 8px rgba(0,0,0,.2); }
   .fs-exit { display:none; }
   .draw-area:fullscreen, .draw-area:-webkit-full-screen {
     background:#fff; display:flex; flex-direction:column; padding:10px; overflow:auto; }
@@ -324,7 +324,7 @@
     <button class="sm ghost" style="width:100%;margin-top:8px" onclick="sendReportTelegram()">✈️ Send to Telegram</button>
   </section>
 
-  <div class="stamp">v0.6.1</div>
+  <div class="stamp">v0.6.2</div>
 </main>
 
 <script src="vendor/pizzip.js"></script>
@@ -384,7 +384,7 @@ function floorLabel(ci){ return floorNames[ci] || defaultFloorLabel(ci); }
 const SHAPE_TOOLS = [["move","✋ Move"],["rect","▭ Box"],["line","╱ Line"],["arrow","➤ Arrow"],["pen","✏️ Pen"],["measure","📏 Measure"],["text","T Label"]];
 function drawToolbar(){
   return `<div class="draw-tools">` +
-      SHAPE_TOOLS.map(([t,l]) => `<button type="button" data-tool="${t}"${t==="move"?' class="on"':''}>${l}</button>`).join("") +
+      SHAPE_TOOLS.map(([t,l]) => `<button type="button" data-tool="${t}"${t==="measure"?' class="on"':''}>${l}</button>`).join("") +
       `<input type="text" class="lbl-in" data-label placeholder="label text" value="A">` +
       `<span class="arm" data-arm></span>` +
     `</div>` +
@@ -527,7 +527,7 @@ function hitShape(shapes, p){
   return -1;
 }
 function snapPoint(shapes, p, skip){
-  const SNAP = 11, cand = [];
+  const SNAP = 16, cand = [];   // wider than a mouse pointer's precision -- fingers need more slop
   shapes.forEach((s,i) => {
     if (i===skip) return;
     if (s.t==="rect"){
@@ -602,7 +602,7 @@ function renderCanvas(svg){
 function initCanvas(railEl){
   const svg = railEl.querySelector("[data-canvas]");
   const labelIn = railEl.querySelector("[data-label]");
-  svg._shapes = []; svg._tool = "move"; svg._sel = -1; svg._hist = [];
+  svg._shapes = []; svg._tool = "measure"; svg._sel = -1; svg._hist = [];
   svg._grid = false; svg._ortho = true; svg._smart = true; svg._vb = [0,0,340,240];
   let drag = null;
   const armSpan = railEl.querySelector("[data-arm]");
@@ -886,7 +886,7 @@ function buildRails(){
           <button type="button" class="fs-exit" data-fs-exit title="Exit fullscreen">✓ Submit</button>
         </div>
       </div>
-      <p class="hint">Draw the railing yourself. Every <b>measurement</b> (📏 Measure, or a smart-pen crank ╱‾╲) auto-gets the next letter A, B, C… and fills that mm box. Only letters with a value go into the report — the drawing itself isn't printed, just the measurements table. <b>✨ Smart</b> cleans freehand lines/boxes; <b>Ortho</b>, <b>Grid</b>, <b>Copy</b>, <b>＋/－/Fit</b>, pan on empty space, alignment guides. Tap <b>⛶ Fullscreen</b> for a full-screen, landscape drawing area — <b>✓ Submit</b> in the corner exits back.</p>
+      <p class="hint"><b>📏 Measure is already selected</b> — tap ⛶ Fullscreen first (bigger, landscape, easiest to hit), then just drag once per side; each drag auto-gets the next letter A, B, C… and fills that mm box, and Measure stays selected so you don't need to re-tap it between sides. Only letters with a value go into the report — the drawing itself isn't printed, just the numbers. Switch tools (Box/Line/Pen/Label) only if you actually want to sketch the shape. <b>✓ Submit</b> in the corner exits fullscreen back.</p>
       <div class="dims">
         ${r.letters.map(L => `<div><label>${L} (mm)</label><input type="text" inputmode="numeric" data-dim="${L}"></div>`).join("")}
       </div>
