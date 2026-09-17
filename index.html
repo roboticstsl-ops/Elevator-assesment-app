@@ -331,7 +331,7 @@
     <button class="sm ghost" style="width:100%;margin-top:8px" onclick="sendReportTelegram()">✈️ Send to Telegram</button>
   </section>
 
-  <div class="stamp">v0.6.13</div>
+  <div class="stamp">v0.6.14</div>
 </main>
 
 <script src="vendor/pizzip.js"></script>
@@ -369,7 +369,7 @@ const CHECKLIST = [
 ];
 const RF1_LOCS = ["Main lobby / reception", "Lift lobby GF", "d-bot charging point"];
 const RAILS = [
-  { key:"top",   name:"Top railing",   letters:["A","B","C","D","E","F","G"] },
+  { key:"top",   name:"Top railing",   letters:["A","B","C"] },
   { key:"rear",  name:"Rear railing",  letters:["A","B","C","D","E"] },
   { key:"left",  name:"Left railing",  letters:["A","B","C","D","E"] },
   { key:"right", name:"Right railing", letters:["A","B","C","D","E"] },
@@ -598,7 +598,8 @@ function shapesToSvg(shapes, sel){
     if (s.t==="rect"){
       const b0 = shapeBox(s);
       if (s.kind==="green"){
-        m = `<rect x="${b0.x}" y="${b0.y}" width="${b0.w}" height="${b0.h}" rx="4" fill="#1fa24a" stroke="#0d6b2c" stroke-width="2"/>`;
+        m = `<rect x="${b0.x}" y="${b0.y}" width="${b0.w}" height="${b0.h}" rx="4" fill="#1fa24a" stroke="#0d6b2c" stroke-width="2"/>`
+          + `<text x="${b0.x+b0.w/2}" y="${b0.y+b0.h/2}" font-size="${Math.max(11,Math.min(b0.w,b0.h)*0.6)}" font-weight="700" fill="#fff" font-family="Arial, sans-serif" text-anchor="middle" dominant-baseline="central">${s.num||""}</text>`;
       } else if (s.kind==="redx"){
         const sw = Math.max(3, Math.min(b0.w,b0.h)*0.1);
         m = `<rect x="${b0.x}" y="${b0.y}" width="${b0.w}" height="${b0.h}" rx="4" fill="#e0342a" stroke="#8c1a13" stroke-width="2"/>`
@@ -700,15 +701,22 @@ function initCanvas(railEl){
   const UNLOCKED_HINT = railKey === "top"
     ? "✋ Move repositions a stamp; tap a stamp icon then tap the drawing to drop it at that spot. Triple-tap a stamp to delete it. Once it looks right, tap ✓ Done — every future report reuses this exact drawing."
     : "Draw this railing once (📏 Measure drags fill A, B, C… automatically; ✏️ Pen for a rough outline). Once it looks right, tap ✓ Done — every future report reuses this exact drawing and you'll only ever type numbers.";
+  const drawArea = railEl.querySelector("[data-draw-area]");
+  const isFullscreen = () => document.fullscreenElement === drawArea || document.webkitFullscreenElement === drawArea;
+  // Editing only works in fullscreen -- the inline view is too cramped to
+  // draw/place stamps in reliably, so it's tap-to-select-a-tool-then-go-
+  // fullscreen-to-actually-touch-the-canvas.
+  const updatePointerGate = () => { svg.style.pointerEvents = (!svg._locked && isFullscreen()) ? "" : "none"; };
   const renderTplBar = () => {
-    svg.style.pointerEvents = svg._locked ? "none" : "";
+    updatePointerGate();
     toolRows.hidden = svg._locked;
     tplImportBtn.hidden = svg._locked;
     if (svg._locked) tplImportBox.hidden = true;
     tplStatus.textContent = svg._locked ? "🔒 Fixed diagram" : "✏️ Drawing — not locked yet";
     tplToggle.textContent = svg._locked ? "✏️ Edit drawing" : "✓ Done — lock it in";
-    tplHint.textContent = svg._locked ? LOCKED_HINT : UNLOCKED_HINT;
+    tplHint.textContent = svg._locked ? LOCKED_HINT : (isFullscreen() ? UNLOCKED_HINT : "Tap ⛶ Fullscreen below to draw/edit — the canvas only accepts touches in fullscreen.");
   };
+  svg._updatePointerGate = renderTplBar;
   tplToggle.addEventListener("click", () => {
     if (svg._locked){ svg._locked = false; }
     else { saveRailTemplate(railKey, svg._shapes); svg._locked = true; save(); }
@@ -792,6 +800,13 @@ function initCanvas(railEl){
         const kind = STAMP_KIND[svg._tool];
         const sz = STAMP_SIZE[kind] || { w:60, h:60 };
         const s = { t:"rect", x:p.x-sz.w/2, y:p.y-sz.h/2, w:sz.w, h:sz.h, kind };
+        if (kind === "green"){
+          // Only two green boxes ever -- numbered 1 and 2, nothing else.
+          const used = svg._shapes.filter(x => x.kind==="green").map(x => x.num);
+          const num = !used.includes(1) ? 1 : !used.includes(2) ? 2 : null;
+          if (num === null){ showTip("Only 2 green boxes allowed"); return; }
+          s.num = num;
+        }
         svg._shapes.push(s); svg._sel = svg._shapes.length-1;
         renderCanvas(svg); save();
         // Arm a move-drag right away too, so holding and dragging without
@@ -1587,6 +1602,7 @@ function exitDrawFullscreen(){
 // Safety net: unlock orientation if fullscreen was exited some other way
 // (system back gesture) instead of tapping ✓ Submit.
 document.addEventListener("fullscreenchange", () => {
+  document.querySelectorAll("[data-canvas]").forEach(s => s._updatePointerGate && s._updatePointerGate());
   if (document.fullscreenElement) return;
   try { screen.orientation && screen.orientation.unlock && screen.orientation.unlock(); } catch(e){}
 });
