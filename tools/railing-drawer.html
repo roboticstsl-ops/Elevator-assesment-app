@@ -1,0 +1,496 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>Railing Drawer (desktop)</title>
+<style>
+  :root { --bd:#d7dae0; --hd:#20242c; --accent:#1e5fd6; --accent-soft:#eaf1fd; --bg:#eef0f4; }
+  * { box-sizing:border-box; }
+  body { margin:0; background:var(--bg); color:#1b1e24; font:15px/1.45 -apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,sans-serif; }
+  header { background:var(--hd); color:#fff; padding:14px 20px; }
+  header h1 { margin:0; font-size:17px; }
+  header p { margin:6px 0 0; font-size:13px; color:#b8bdc6; }
+  main { max-width:1000px; margin:0 auto; padding:18px 20px 60px; }
+  .row { display:flex; gap:10px; flex-wrap:wrap; align-items:center; margin-bottom:14px; }
+  label { font-size:12px; font-weight:650; text-transform:uppercase; letter-spacing:.3px; color:#6b7280; }
+  select { padding:8px 10px; border:1px solid var(--bd); border-radius:8px; font-size:14px; }
+  button { font:inherit; font-weight:600; padding:9px 14px; border-radius:8px; border:1px solid var(--bd);
+    background:#fff; color:var(--hd); cursor:pointer; }
+  button.on { background:var(--hd); color:#fff; }
+  button.primary { background:var(--accent); color:#fff; border-color:var(--accent); }
+  .draw-tools { display:flex; flex-wrap:wrap; gap:8px; margin-bottom:10px; align-items:center; }
+  .draw-tools .arm { font-size:12px; color:var(--accent); font-weight:700; }
+  .canvas-wrap { position:relative; border:1px solid var(--bd); border-radius:10px; background:#fff; overflow:hidden; }
+  .draw-canvas { width:100%; height:640px; display:block; cursor:crosshair; }
+  .draw-canvas.arming { outline:3px solid var(--accent); outline-offset:-3px; }
+  .draw-hud { position:absolute; top:10px; left:12px; background:var(--hd); color:#fff; font-size:12px;
+    font-weight:700; letter-spacing:.4px; padding:4px 9px; border-radius:6px; pointer-events:none; }
+  .dims { display:grid; grid-template-columns:repeat(auto-fill,minmax(90px,1fr)); gap:10px; margin:16px 0; }
+  .dims div { display:flex; flex-direction:column; gap:4px; }
+  .dims input { padding:8px; text-align:center; border:1px solid var(--bd); border-radius:6px; font-size:14px; }
+  .panel { background:#fff; border:1px solid var(--bd); border-radius:10px; padding:14px 16px; margin-top:18px; }
+  .panel h3 { margin:0 0 8px; font-size:14px; }
+  .panel p { margin:0 0 10px; font-size:12.5px; color:#6b7280; }
+  textarea { width:100%; min-height:120px; font:12px/1.4 ui-monospace,Menlo,monospace; padding:10px;
+    border:1px solid var(--bd); border-radius:8px; resize:vertical; }
+  .msg { font-size:13px; font-weight:650; color:var(--accent); min-height:18px; }
+  .hint { font-size:12.5px; color:#6b7280; margin:0 0 14px; }
+</style>
+</head>
+<body>
+<header>
+  <h1>✏️ Railing Drawer — desktop</h1>
+  <p>Same drawing tool as the phone app, just with a mouse and a bigger screen. Draw, then paste the export into the app to lock it in as that railing's permanent template.</p>
+</header>
+<main>
+  <div class="row">
+    <div><label>Railing</label><br><select id="railPick"></select></div>
+    <button id="loadBtn">📥 Load from pasted JSON below</button>
+    <button id="fitBtn">⤢ Fit</button>
+  </div>
+
+  <div class="draw-tools" id="toolRow"></div>
+
+  <div class="canvas-wrap">
+    <svg class="draw-canvas" id="canvas" viewBox="0 0 680 480"></svg>
+  </div>
+
+  <div class="dims" id="dims"></div>
+
+  <div class="panel">
+    <h3>Export → paste into the app</h3>
+    <p>Copy this and paste it into the railing's <b>📥 Import from desktop</b> box in the app, then it locks in automatically.</p>
+    <textarea id="exportOut" readonly></textarea>
+    <div class="row" style="margin-top:10px;margin-bottom:0">
+      <button class="primary" id="exportBtn">📋 Generate export JSON</button>
+      <span class="msg" id="msg"></span>
+    </div>
+  </div>
+
+  <div class="panel">
+    <h3>Import (paste JSON here, then "Load from pasted JSON" above)</h3>
+    <p>Paste JSON you previously exported (from here or from the app) to continue editing it.</p>
+    <textarea id="importIn" placeholder='{"rail":"top","shapes":[...]}'></textarea>
+  </div>
+</main>
+
+<script>
+/* ---------- shared drawing engine (identical to the phone app's) ---------- */
+const esc = s => String(s==null?"":s).replace(/[&<>"]/g, c => ({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;"}[c]));
+const SHAPE_TOOLS = [["move","✋ Move"],["measure","📏 Measure"],["pen","✏️ Pen"]];
+const GRID = 10;
+function snapGrid(on, p){ return on ? { x:Math.round(p.x/GRID)*GRID, y:Math.round(p.y/GRID)*GRID } : p; }
+function applyOrtho(on, ax, ay, p){
+  if (!on) return p;
+  const dx = p.x-ax, dy = p.y-ay, len = Math.hypot(dx,dy);
+  if (len < 1) return p;
+  let a = Math.atan2(dy,dx);
+  a = Math.round(a/(Math.PI/4))*(Math.PI/4);
+  return { x:ax + len*Math.cos(a), y:ay + len*Math.sin(a) };
+}
+function _perp(p, x1,y1,x2,y2){
+  const dx=x2-x1, dy=y2-y1, L=Math.hypot(dx,dy)||1;
+  return Math.abs((p[0]-x1)*dy - (p[1]-y1)*dx)/L;
+}
+function _rdp(pts, eps){
+  if (pts.length < 3) return pts.slice();
+  const a = pts[0], b = pts[pts.length-1];
+  let dmax = 0, idx = 0;
+  for (let i=1;i<pts.length-1;i++){
+    const d = _perp(pts[i], a[0],a[1], b[0],b[1]);
+    if (d > dmax){ dmax = d; idx = i; }
+  }
+  if (dmax > eps){
+    const l = _rdp(pts.slice(0, idx+1), eps);
+    const r = _rdp(pts.slice(idx), eps);
+    return l.slice(0, -1).concat(r);
+  }
+  return [a, b];
+}
+function _len(d){ let L=0; for (let i=1;i<d.length;i++) L += Math.hypot(d[i][0]-d[i-1][0], d[i][1]-d[i-1][1]); return L; }
+function recognizeStroke(d){
+  if (!d || d.length < 4) return null;
+  const xs = d.map(p=>p[0]), ys = d.map(p=>p[1]);
+  const bx = Math.min(...xs), by = Math.min(...ys);
+  const bw = Math.max(...xs) - bx, bh = Math.max(...ys) - by;
+  const diag = Math.hypot(bw, bh) || 1;
+  const s = _rdp(d, diag * 0.07);
+  const start = d[0], end = d[d.length-1];
+  const chord = Math.hypot(end[0]-start[0], end[1]-start[1]);
+  const closed = chord < diag * 0.25;
+  const pl = _len(d);
+  if (s.length <= 2 && chord > 12 && pl / Math.max(chord,1) < 1.4)
+    return { t:"line", x1:start[0], y1:start[1], x2:end[0], y2:end[1] };
+  if (closed && s.length >= 4 && s.length <= 8 && bw > 14 && bh > 14 &&
+      pl < 2*(bw+bh) * 1.6)
+    return { t:"rect", x:bx, y:by, w:bw, h:bh };
+  if (!closed && s.length >= 3 && s.length <= 6){
+    let best = 0, bi = 1;
+    for (let i=1;i<s.length;i++){
+      const L = Math.hypot(s[i][0]-s[i-1][0], s[i][1]-s[i-1][1]);
+      if (L > best){ best = L; bi = i; }
+    }
+    if (best > 20){
+      const a = s[bi-1], b = s[bi];
+      return { t:"dim", x1:a[0], y1:a[1], x2:b[0], y2:b[1] };
+    }
+  }
+  return null;
+}
+function nextDimLetter(shapes){
+  const used = shapes.filter(s => (s.t === "dim" || s.t === "meas") && s.label).map(s => s.label);
+  let c = 65;
+  while (used.indexOf(String.fromCharCode(c)) >= 0 && c < 91) c++;
+  return String.fromCharCode(c);
+}
+function shapeBox(s){
+  if (s.t==="rect") return { x:Math.min(s.x,s.x+s.w), y:Math.min(s.y,s.y+s.h), w:Math.abs(s.w), h:Math.abs(s.h) };
+  if (s.t==="line" || s.t==="arrow" || s.t==="dim" || s.t==="meas") return { x:Math.min(s.x1,s.x2), y:Math.min(s.y1,s.y2), w:Math.abs(s.x2-s.x1), h:Math.abs(s.y2-s.y1) };
+  if (s.t==="path"){ const xs=s.d.map(p=>p[0]), ys=s.d.map(p=>p[1]);
+    const x=Math.min(...xs), y=Math.min(...ys); return { x, y, w:Math.max(...xs)-x, h:Math.max(...ys)-y }; }
+  return { x:s.x, y:s.y-13, w:Math.max(14,(s.txt||"").length*8), h:17 };
+}
+function shapeHandles(s){
+  if (s.t==="rect"){
+    const b = shapeBox(s);
+    return [
+      {k:"nw",x:b.x,y:b.y},{k:"n",x:b.x+b.w/2,y:b.y},{k:"ne",x:b.x+b.w,y:b.y},
+      {k:"e",x:b.x+b.w,y:b.y+b.h/2},{k:"se",x:b.x+b.w,y:b.y+b.h},
+      {k:"s",x:b.x+b.w/2,y:b.y+b.h},{k:"sw",x:b.x,y:b.y+b.h},{k:"w",x:b.x,y:b.y+b.h/2},
+    ];
+  }
+  if (s.t==="line" || s.t==="arrow" || s.t==="dim" || s.t==="meas") return [{k:"p1",x:s.x1,y:s.y1},{k:"p2",x:s.x2,y:s.y2}];
+  return [];
+}
+function alignSnap(shapes, sel, mb){
+  const TOL = 5;
+  const myX = [mb.x, mb.x+mb.w/2, mb.x+mb.w];
+  const myY = [mb.y, mb.y+mb.h/2, mb.y+mb.h];
+  let bx = null, by = null;
+  shapes.forEach((s,i) => {
+    if (i === sel) return;
+    const b = shapeBox(s);
+    [b.x, b.x+b.w/2, b.x+b.w].forEach(t => myX.forEach(v => {
+      const d = t - v; if (Math.abs(d) < TOL && (!bx || Math.abs(d) < Math.abs(bx.d))) bx = { d, at:t };
+    }));
+    [b.y, b.y+b.h/2, b.y+b.h].forEach(t => myY.forEach(v => {
+      const d = t - v; if (Math.abs(d) < TOL && (!by || Math.abs(d) < Math.abs(by.d))) by = { d, at:t };
+    }));
+  });
+  const guides = [];
+  if (bx) guides.push({ vertical:true,  at:bx.at });
+  if (by) guides.push({ vertical:false, at:by.at });
+  return { dx: bx ? bx.d : 0, dy: by ? by.d : 0, guides };
+}
+function moveShape(s, o, dx, dy){
+  if (s.t==="rect" || s.t==="text"){ s.x = o.x+dx; s.y = o.y+dy; }
+  else if (s.t==="path"){ s.d = o.d.map(pt => [pt[0]+dx, pt[1]+dy]); }
+  else { s.x1 = o.x1+dx; s.y1 = o.y1+dy; s.x2 = o.x2+dx; s.y2 = o.y2+dy; }
+}
+function boxAfter(o, dx, dy){
+  const s = JSON.parse(JSON.stringify(o)); moveShape(s, o, dx, dy); return shapeBox(s);
+}
+function hitShape(shapes, p){
+  for (let i=shapes.length-1;i>=0;i--){
+    const b = shapeBox(shapes[i]);
+    if (p.x>=b.x-6 && p.x<=b.x+b.w+6 && p.y>=b.y-6 && p.y<=b.y+b.h+6) return i;
+  }
+  return -1;
+}
+function snapPoint(shapes, p, skip){
+  const SNAP = 12, cand = [];
+  shapes.forEach((s,i) => {
+    if (i===skip) return;
+    if (s.t==="rect"){
+      const b = shapeBox(s);
+      cand.push([b.x,b.y],[b.x+b.w,b.y],[b.x,b.y+b.h],[b.x+b.w,b.y+b.h],
+        [b.x+b.w/2,b.y],[b.x+b.w/2,b.y+b.h],[b.x,b.y+b.h/2],[b.x+b.w,b.y+b.h/2]);
+    } else if (s.t==="line" || s.t==="arrow" || s.t==="dim"){
+      cand.push([s.x1,s.y1],[s.x2,s.y2],[(s.x1+s.x2)/2,(s.y1+s.y2)/2]);
+    }
+  });
+  let best = p, bd = SNAP;
+  cand.forEach(([x,y]) => { const d = Math.hypot(p.x-x, p.y-y); if (d < bd){ bd = d; best = { x, y }; } });
+  return best;
+}
+function arrowHead(x1,y1,x2,y2){
+  const a = Math.atan2(y2-y1, x2-x1), L = 13;
+  const p1x = x2 - L*Math.cos(a-0.5), p1y = y2 - L*Math.sin(a-0.5);
+  const p2x = x2 - L*Math.cos(a+0.5), p2y = y2 - L*Math.sin(a+0.5);
+  return `<polyline points="${p1x},${p1y} ${x2},${y2} ${p2x},${p2y}" fill="none" stroke="#111" stroke-width="2"/>`;
+}
+function shapesToSvg(shapes, sel){
+  return (shapes||[]).map((s,i) => {
+    let m;
+    if (s.t==="rect"){ const b0 = shapeBox(s); m = `<rect x="${b0.x}" y="${b0.y}" width="${b0.w}" height="${b0.h}" fill="none" stroke="#111" stroke-width="2"/>`; }
+    else if (s.t==="line") m = `<line x1="${s.x1}" y1="${s.y1}" x2="${s.x2}" y2="${s.y2}" stroke="#111" stroke-width="2"/>`;
+    else if (s.t==="arrow") m = `<line x1="${s.x1}" y1="${s.y1}" x2="${s.x2}" y2="${s.y2}" stroke="#111" stroke-width="2"/>` + arrowHead(s.x1,s.y1,s.x2,s.y2);
+    else if (s.t==="path") m = `<polyline points="${s.d.map(p=>p[0]+','+p[1]).join(' ')}" fill="none" stroke="#111" stroke-width="2" stroke-linejoin="round" stroke-linecap="round"/>`;
+    else if (s.t==="dim" || s.t==="meas"){
+      const ang = Math.atan2(s.y2-s.y1, s.x2-s.x1), tx = 6*Math.sin(ang), ty = -6*Math.cos(ang);
+      const mx = (s.x1+s.x2)/2, my = (s.y1+s.y2)/2;
+      const col = s.t==="meas" ? "#c0392b" : "#1652c9";
+      const label = s.label
+        ? esc(s.label) + " · " + Math.round(Math.hypot(s.x2-s.x1, s.y2-s.y1))
+        : Math.round(Math.hypot(s.x2-s.x1, s.y2-s.y1)) + "";
+      m = `<line x1="${s.x1}" y1="${s.y1}" x2="${s.x2}" y2="${s.y2}" stroke="${col}" stroke-width="1.5"${s.t==="meas"?' stroke-dasharray="5 3"':''}/>`
+        + `<line x1="${s.x1-tx}" y1="${s.y1-ty}" x2="${s.x1+tx}" y2="${s.y1+ty}" stroke="${col}" stroke-width="1.5"/>`
+        + `<line x1="${s.x2-tx}" y1="${s.y2-ty}" x2="${s.x2+tx}" y2="${s.y2+ty}" stroke="${col}" stroke-width="1.5"/>`
+        + `<text x="${mx+tx*2.2}" y="${my+ty*2.2}" font-size="12" fill="${col}" font-family="Arial, sans-serif" text-anchor="middle" dominant-baseline="middle" paint-order="stroke" stroke="#fff" stroke-width="3">${label}</text>`;
+    }
+    else m = `<text x="${s.x}" y="${s.y}" font-size="15" fill="#1652c9" font-family="Arial, sans-serif">${esc(s.txt)}</text>`;
+    if (i === sel){
+      const b = shapeBox(s);
+      m += `<rect x="${b.x-4}" y="${b.y-4}" width="${b.w+8}" height="${b.h+8}" fill="none" stroke="#1652c9" stroke-width="1" stroke-dasharray="4 3"/>`;
+    }
+    return m;
+  }).join("");
+}
+function canvasPoint(svg, e){
+  const r = svg.getBoundingClientRect(), v = svg._vb || [0,0,680,480];
+  return { x:v[0] + (e.clientX-r.left)/r.width*v[2], y:v[1] + (e.clientY-r.top)/r.height*v[3] };
+}
+function applyVB(svg){ svg.setAttribute("viewBox", (svg._vb||[0,0,680,480]).join(" ")); }
+function renderCanvas(svg){
+  const v = svg._vb || [0,0,680,480];
+  let m = shapesToSvg(svg._shapes, svg._sel);
+  (svg._guides || []).forEach(g => {
+    m += g.vertical
+      ? `<line x1="${g.at}" y1="${v[1]}" x2="${g.at}" y2="${v[1]+v[3]}" stroke="#e11d74" stroke-width="1" stroke-dasharray="4 3"/>`
+      : `<line x1="${v[0]}" y1="${g.at}" x2="${v[0]+v[2]}" y2="${g.at}" stroke="#e11d74" stroke-width="1" stroke-dasharray="4 3"/>`;
+  });
+  if (svg._snapMark) m += `<circle cx="${svg._snapMark.x}" cy="${svg._snapMark.y}" r="6" fill="none" stroke="#1652c9" stroke-width="1.5"/>`;
+  svg.innerHTML = m;
+}
+
+/* ---------- desktop wrapper: rail picker, dims, wiring, export/import ---------- */
+const RAILS = [
+  { key:"top",   name:"Top railing",   letters:["A","B","C","D","E","F","G"] },
+  { key:"rear",  name:"Rear railing",  letters:["A","B","C","D","E"] },
+  { key:"left",  name:"Left railing",  letters:["A","B","C","D","E"] },
+  { key:"right", name:"Right railing", letters:["A","B","C","D","E"] },
+];
+const railPick = document.getElementById("railPick");
+RAILS.forEach(r => railPick.add(new Option(r.name, r.key)));
+const toolRow = document.getElementById("toolRow");
+toolRow.innerHTML = SHAPE_TOOLS.map(([t,l]) => `<button data-tool="${t}"${t==="measure"?' class="on"':''}>${l}</button>`).join("")
+  + `<span class="arm" data-arm></span>`
+  + `<button data-act="undo">↩︎ Undo</button><button data-act="clear">Clear</button>`;
+
+const svg = document.getElementById("canvas");
+const dimsEl = document.getElementById("dims");
+const msg = document.getElementById("msg");
+const hud = document.createElement("div");
+hud.className = "draw-hud"; hud.hidden = true;
+document.querySelector(".canvas-wrap").appendChild(hud);
+
+let curRail = RAILS[0];
+svg._shapes = []; svg._tool = "measure"; svg._sel = -1; svg._hist = [];
+svg._ortho = true; svg._smart = true; svg._vb = [0,0,680,480];
+let drag = null;
+
+function buildDims(){
+  dimsEl.innerHTML = curRail.letters.map(L => `<div><label>${L} (mm)</label><input type="text" inputmode="numeric" data-dim="${L}"></div>`).join("");
+  dimsEl.querySelectorAll("[data-dim]").forEach(inp => {
+    inp.addEventListener("focus", () => { svg._activeDim = inp.dataset.dim; svg.classList.add("arming"); armSpan.textContent = "draw " + inp.dataset.dim + " on the board"; });
+    inp.addEventListener("input", () => { if (svg._activeDim === inp.dataset.dim) clearArm(); });
+  });
+}
+const armSpan = toolRow.querySelector("[data-arm]");
+const showHud = (len, ang) => { hud.hidden = false; hud.textContent = "L " + Math.round(len) + "  ·  " + Math.round(((ang*180/Math.PI)%360+360)%360) + "°"; };
+const snap = () => { svg._hist.push(JSON.stringify(svg._shapes)); if (svg._hist.length > 50) svg._hist.shift(); };
+const setTool = t => { svg._tool = t; toolRow.querySelectorAll("[data-tool]").forEach(b => b.classList.toggle("on", b.dataset.tool===t)); };
+const clearArm = () => { svg._activeDim = null; svg.classList.remove("arming"); armSpan.textContent = ""; };
+
+toolRow.addEventListener("click", e => {
+  clearArm();
+  const tb = e.target.closest("[data-tool]");
+  if (tb){ setTool(tb.dataset.tool); return; }
+  const ab = e.target.closest("[data-act]"); if (!ab) return;
+  if (ab.dataset.act === "undo"){
+    if (svg._hist.length){ svg._shapes = JSON.parse(svg._hist.pop()); svg._sel = -1; renderCanvas(svg); }
+  } else if (ab.dataset.act === "clear"){
+    if (svg._shapes.length){ snap(); svg._shapes = []; svg._sel = -1; renderCanvas(svg); }
+  }
+});
+document.getElementById("fitBtn").addEventListener("click", () => { svg._vb = [0,0,680,480]; applyVB(svg); renderCanvas(svg); });
+
+svg.addEventListener("pointerdown", e => {
+  e.preventDefault();
+  const rawp = canvasPoint(svg, e);
+  const creating = svg._activeDim || (svg._tool !== "move");
+  const p = creating ? snapPoint(svg._shapes, rawp, -1) : rawp;
+  if (svg._activeDim){
+    snap();
+    const s = { t:"dim", x1:p.x, y1:p.y, x2:p.x, y2:p.y, label:svg._activeDim };
+    svg._shapes.push(s); svg._sel = svg._shapes.length-1;
+    drag = { mode:"dim", snapped:true }; svg.setPointerCapture(e.pointerId);
+    renderCanvas(svg); return;
+  }
+  if (svg._tool !== "move"){
+    snap();
+    if (svg._tool==="pen"){
+      const s = { t:"path", d:[[p.x,p.y]] };
+      svg._shapes.push(s); svg._sel = svg._shapes.length-1;
+      drag = { mode:"pen", snapped:true }; svg.setPointerCapture(e.pointerId); renderCanvas(svg); return;
+    }
+    if (svg._tool==="measure"){
+      const s = { t:"meas", x1:p.x, y1:p.y, x2:p.x, y2:p.y };
+      svg._shapes.push(s); svg._sel = svg._shapes.length-1;
+      drag = { mode:"meas", snapped:true }; svg.setPointerCapture(e.pointerId);
+      renderCanvas(svg); return;
+    }
+  }
+  if (svg._sel>=0){
+    const hit = shapeHandles(svg._shapes[svg._sel]).find(h => Math.hypot(p.x-h.x, p.y-h.y) <= 12);
+    if (hit){ drag = { mode:"resize", hk:hit.k, orig:JSON.parse(JSON.stringify(svg._shapes[svg._sel])) }; svg.setPointerCapture(e.pointerId); return; }
+  }
+  const i = hitShape(svg._shapes, p);
+  svg._sel = i; renderCanvas(svg);
+  if (i>=0){
+    drag = { mode:"move", start:p, orig:JSON.parse(JSON.stringify(svg._shapes[i])) };
+    svg.setPointerCapture(e.pointerId);
+  } else {
+    drag = { mode:"pan", client:{x:e.clientX,y:e.clientY}, vb:svg._vb.slice(), rect:svg.getBoundingClientRect() };
+    svg.setPointerCapture(e.pointerId);
+  }
+});
+svg.addEventListener("pointermove", e => {
+  if (!drag) return;
+  if (drag.mode==="pan"){
+    const dxu = (e.clientX-drag.client.x)/drag.rect.width*drag.vb[2];
+    const dyu = (e.clientY-drag.client.y)/drag.rect.height*drag.vb[3];
+    svg._vb = [drag.vb[0]-dxu, drag.vb[1]-dyu, drag.vb[2], drag.vb[3]];
+    applyVB(svg); renderCanvas(svg); return;
+  }
+  if (!drag.snapped){ snap(); drag.snapped = true; }
+  const raw = canvasPoint(svg, e), s = svg._shapes[svg._sel];
+  const useSnap = drag.mode==="dim" || drag.mode==="resize" || drag.mode==="meas";
+  let p = useSnap ? snapPoint(svg._shapes, raw, svg._sel) : raw;
+  svg._snapMark = (useSnap && (p.x!==raw.x || p.y!==raw.y)) ? p : null;
+  if (drag.mode==="pen"){ s.d.push([raw.x,raw.y]); renderCanvas(svg); return; }
+  if (drag.mode==="meas"){
+    s.x2 = p.x; s.y2 = p.y;
+    showHud(Math.hypot(p.x-s.x1,p.y-s.y1), Math.atan2(p.y-s.y1,p.x-s.x1));
+    renderCanvas(svg); return;
+  }
+  if (drag.mode==="dim"){
+    const q = applyOrtho(svg._ortho, s.x1, s.y1, p);
+    s.x2 = q.x; s.y2 = q.y;
+    showHud(Math.hypot(q.x-s.x1,q.y-s.y1), Math.atan2(q.y-s.y1,q.x-s.x1));
+    renderCanvas(svg); return;
+  }
+  if (drag.mode==="move"){
+    const o = drag.orig;
+    let dx = raw.x-drag.start.x, dy = raw.y-drag.start.y;
+    const al = alignSnap(svg._shapes, svg._sel, boxAfter(o, dx, dy));
+    dx += al.dx; dy += al.dy;
+    svg._guides = al.guides;
+    moveShape(s, o, dx, dy);
+  } else if (drag.mode==="resize"){
+    const o = drag.orig, k = drag.hk;
+    if (s.t==="rect"){
+      let l = o.x, r = o.x + o.w, t = o.y, bt = o.y + o.h;
+      const guides = [], edgesX = [], edgesY = [];
+      svg._shapes.forEach((os,oi) => { if (oi===svg._sel) return; const b = shapeBox(os);
+        edgesX.push(b.x, b.x+b.w/2, b.x+b.w); edgesY.push(b.y, b.y+b.h/2, b.y+b.h); });
+      const near = (val, arr) => { let best=null; arr.forEach(t=>{ const d=t-val; if(Math.abs(d)<5 && (!best||Math.abs(d)<Math.abs(best.d))) best={d,at:t}; }); return best; };
+      if (k.includes("w")){ const n=near(p.x,edgesX); l = n ? n.at : p.x; if(n) guides.push({vertical:true,at:n.at}); }
+      if (k.includes("e")){ const n=near(p.x,edgesX); r = n ? n.at : p.x; if(n) guides.push({vertical:true,at:n.at}); }
+      if (k.includes("n")){ const n=near(p.y,edgesY); t = n ? n.at : p.y; if(n) guides.push({vertical:false,at:n.at}); }
+      if (k.includes("s")){ const n=near(p.y,edgesY); bt = n ? n.at : p.y; if(n) guides.push({vertical:false,at:n.at}); }
+      s.x = Math.min(l,r); s.w = Math.max(10, Math.abs(r-l));
+      s.y = Math.min(t,bt); s.h = Math.max(10, Math.abs(bt-t));
+      svg._guides = guides;
+      showHud(s.w, 0);
+    } else if (k==="p1"){ s.x1 = p.x; s.y1 = p.y; }
+    else { const q = applyOrtho(svg._ortho, s.x1, s.y1, p); s.x2 = q.x; s.y2 = q.y; }
+    if (s.t==="line"||s.t==="arrow"||s.t==="dim") showHud(Math.hypot(s.x2-s.x1,s.y2-s.y1), Math.atan2(s.y2-s.y1,s.x2-s.x1));
+  }
+  renderCanvas(svg);
+});
+const endDrag = e => {
+  if (!drag) return;
+  const mode = drag.mode;
+  drag = null; hud.hidden = true;
+  try { svg.releasePointerCapture(e.pointerId); } catch(_){}
+  svg._guides = null;
+  if (mode==="pan") return;
+  if (mode==="move"){ renderCanvas(svg); }
+  if (mode==="meas"){
+    const s = svg._shapes[svg._sel];
+    const len = Math.round(Math.hypot(s.x2-s.x1, s.y2-s.y1));
+    if (len < 4){ svg._shapes.pop(); svg._sel = -1; }
+    else if (!s.label){
+      s.label = nextDimLetter(svg._shapes);
+      const inp = dimsEl.querySelector(`[data-dim="${s.label}"]`);
+      if (inp) inp.value = len;
+    }
+    renderCanvas(svg);
+  }
+  if (mode==="dim"){
+    const s = svg._shapes[svg._sel];
+    const len = Math.round(Math.hypot(s.x2-s.x1, s.y2-s.y1));
+    if (len < 6){ svg._shapes.pop(); svg._sel = -1; }
+    else { const inp = dimsEl.querySelector(`[data-dim="${s.label}"]`); if (inp) inp.value = len; }
+    clearArm(); renderCanvas(svg);
+  }
+  if (mode==="resize"){
+    const s = svg._shapes[svg._sel];
+    if (s && s.t==="dim"){ const inp = dimsEl.querySelector(`[data-dim="${s.label}"]`); if (inp) inp.value = Math.round(Math.hypot(s.x2-s.x1, s.y2-s.y1)); }
+  }
+  if (mode==="pen"){
+    const s = svg._shapes[svg._sel];
+    if (s && s.t === "path" && svg._smart){
+      const rec = recognizeStroke(s.d);
+      if (rec){
+        if (rec.t === "line" || rec.t === "dim"){
+          const p1 = snapPoint(svg._shapes, { x:rec.x1, y:rec.y1 }, svg._sel);
+          const p2 = snapPoint(svg._shapes, { x:rec.x2, y:rec.y2 }, svg._sel);
+          rec.x1 = p1.x; rec.y1 = p1.y; rec.x2 = p2.x; rec.y2 = p2.y;
+          if (rec.t === "line" && svg._ortho){
+            const q = applyOrtho(true, rec.x1, rec.y1, { x:rec.x2, y:rec.y2 });
+            rec.x2 = q.x; rec.y2 = q.y;
+          }
+        }
+        if (rec.t === "dim"){
+          rec.label = nextDimLetter(svg._shapes);
+          const inp = dimsEl.querySelector(`[data-dim="${rec.label}"]`);
+          if (inp) inp.value = Math.round(Math.hypot(rec.x2-rec.x1, rec.y2-rec.y1));
+        }
+        svg._shapes[svg._sel] = rec;
+      }
+    }
+  }
+  svg._snapMark = null; renderCanvas(svg);
+};
+svg.addEventListener("pointerup", endDrag);
+svg.addEventListener("pointercancel", endDrag);
+
+function switchRail(key){
+  curRail = RAILS.find(r => r.key === key) || RAILS[0];
+  svg._shapes = []; svg._sel = -1; svg._hist = []; svg._vb = [0,0,680,480];
+  applyVB(svg); buildDims(); renderCanvas(svg); msg.textContent = "";
+}
+railPick.addEventListener("change", () => switchRail(railPick.value));
+switchRail(RAILS[0].key);
+applyVB(svg);
+
+document.getElementById("exportBtn").addEventListener("click", () => {
+  document.getElementById("exportOut").value = JSON.stringify({ rail: curRail.key, shapes: svg._shapes }, null, 0);
+  msg.textContent = "Generated — select all in the box above and copy (⌘C).";
+});
+document.getElementById("loadBtn").addEventListener("click", () => {
+  let data;
+  try { data = JSON.parse(document.getElementById("importIn").value); }
+  catch(e){ msg.textContent = "That's not valid JSON."; return; }
+  if (!data || !Array.isArray(data.shapes)){ msg.textContent = "JSON needs a \"shapes\" array."; return; }
+  if (data.rail) railPick.value = data.rail;
+  curRail = RAILS.find(r => r.key === railPick.value) || RAILS[0];
+  svg._shapes = data.shapes; svg._sel = -1; svg._hist = []; svg._vb = [0,0,680,480];
+  applyVB(svg); buildDims(); renderCanvas(svg);
+  msg.textContent = "Loaded — carry on editing.";
+});
+</script>
+</body>
+</html>

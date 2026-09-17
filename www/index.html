@@ -329,7 +329,7 @@
     <button class="sm ghost" style="width:100%;margin-top:8px" onclick="sendReportTelegram()">✈️ Send to Telegram</button>
   </section>
 
-  <div class="stamp">v0.6.5</div>
+  <div class="stamp">v0.6.6</div>
 </main>
 
 <script src="vendor/pizzip.js"></script>
@@ -622,11 +622,17 @@ function initCanvas(railEl){
   const tplStatus = railEl.querySelector("[data-tpl-status]");
   const tplToggle = railEl.querySelector("[data-tpl-toggle]");
   const tplHint = railEl.querySelector("[data-tpl-hint]");
+  const tplImportBtn = railEl.querySelector("[data-tpl-import]");
+  const tplImportBox = railEl.querySelector("[data-tpl-import-box]");
+  const tplImportText = railEl.querySelector("[data-tpl-import-text]");
+  const tplImportGo = railEl.querySelector("[data-tpl-import-go]");
   const LOCKED_HINT = "The diagram is fixed — just fill the A, B, C… mm boxes below from your own tape measurements. Tap ✏️ Edit drawing only if the physical shape actually changed.";
   const UNLOCKED_HINT = "Draw this railing once (📏 Measure drags fill A, B, C… automatically; ✏️ Pen for a rough outline). Once it looks right, tap ✓ Done — every future report reuses this exact drawing and you'll only ever type numbers.";
   const renderTplBar = () => {
     svg.style.pointerEvents = svg._locked ? "none" : "";
     toolRows.hidden = svg._locked;
+    tplImportBtn.hidden = svg._locked;
+    if (svg._locked) tplImportBox.hidden = true;
     tplStatus.textContent = svg._locked ? "🔒 Fixed diagram" : "✏️ Drawing — not locked yet";
     tplToggle.textContent = svg._locked ? "✏️ Edit drawing" : "✓ Done — lock it in";
     tplHint.textContent = svg._locked ? LOCKED_HINT : UNLOCKED_HINT;
@@ -635,6 +641,17 @@ function initCanvas(railEl){
     if (svg._locked){ svg._locked = false; }
     else { saveRailTemplate(railKey, svg._shapes); svg._locked = true; save(); }
     renderTplBar();
+  });
+  tplImportBtn.addEventListener("click", () => { tplImportBox.hidden = !tplImportBox.hidden; });
+  tplImportGo.addEventListener("click", () => {
+    let data;
+    try { data = JSON.parse(tplImportText.value); }
+    catch(e){ showTip("That's not valid JSON — paste the export from the desktop drawer."); return; }
+    if (!data || !Array.isArray(data.shapes)){ showTip("JSON needs a \"shapes\" array."); return; }
+    svg._shapes = data.shapes; svg._sel = -1; svg._hist = []; svg._vb = [0,0,340,240];
+    applyVB(svg); renderCanvas(svg); save();
+    tplImportBox.hidden = true; tplImportText.value = "";
+    showTip("Loaded from desktop — check it, then tap ✓ Done to lock it in.");
   });
   renderTplBar();
   const hud = document.createElement("div");
@@ -872,7 +889,14 @@ function buildRails(){
       <div class="draw-area" data-draw-area>
         <div class="tpl-bar" data-tpl-bar>
           <span class="tpl-status" data-tpl-status></span>
-          <button type="button" class="sm" data-tpl-toggle></button>
+          <div style="display:flex;gap:6px">
+            <button type="button" class="sm ghost" data-tpl-import>📥 Import from desktop</button>
+            <button type="button" class="sm" data-tpl-toggle></button>
+          </div>
+        </div>
+        <div data-tpl-import-box hidden style="margin-bottom:8px">
+          <textarea data-tpl-import-text rows="3" placeholder='Paste the JSON exported from the desktop drawer (tools/railing-drawer.html)…' style="width:100%;font:12px/1.4 ui-monospace,Menlo,monospace;padding:8px;border:1px solid var(--bd);border-radius:6px"></textarea>
+          <button type="button" class="sm" style="margin-top:6px" data-tpl-import-go>Load into canvas</button>
         </div>
         <div data-tool-rows>${drawToolbar()}</div>
         <div class="canvas-wrap">
