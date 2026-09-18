@@ -216,7 +216,7 @@
   <div id="banner" class="banner"></div>
 
   <section class="card">
-    <h2>Header</h2>
+    <h2>Section 1: Elevator Info</h2>
     <div class="grid2">
       <div><label>Document Ref</label><input type="text" data-f="doc_ref"></div>
       <div><label>Prepared By</label><input type="text" data-f="prepared_by"></div>
@@ -228,6 +228,14 @@
       <div><label>Full Address</label><input type="text" data-f="address"></div>
     </div>
     <label>Google Maps Pin / Link</label><input type="url" data-f="maps_link" placeholder="https://maps.app.goo.gl/...">
+    <div class="grid2">
+      <div><label>Elevator OEM</label><input type="text" data-f="elev_oem"></div>
+      <div><label>Elevator Model / Series</label><input type="text" data-f="elev_model"></div>
+      <div><label>Elevator ID (bank if applicable)</label><input type="text" data-f="elev_id"></div>
+      <div><label>Elevator Maintenance Company</label><input type="text" data-f="elev_maint"></div>
+    </div>
+    <label>Available Plug Point(s) on top of the elevator</label>
+    <textarea data-f="plug_points"></textarea>
   </section>
 
   <section class="card">
@@ -238,17 +246,7 @@
   </section>
 
   <section class="card">
-    <h2>2. Technical Findings — Elevator</h2>
-    <div class="grid2">
-      <div><label>Elevator OEM</label><input type="text" data-f="elev_oem"></div>
-      <div><label>Elevator Model / Series</label><input type="text" data-f="elev_model"></div>
-      <div><label>Elevator ID (bank if applicable)</label><input type="text" data-f="elev_id"></div>
-      <div><label>Elevator Maintenance Company</label><input type="text" data-f="elev_maint"></div>
-    </div>
-    <label>Available Plug Point(s) on top of the elevator</label>
-    <textarea data-f="plug_points"></textarea>
-
-    <h3>Railing Measurements</h3>
+    <h2>Railing Measurements</h2>
     <div id="rails"></div>
     <label>Notes (IoT box placement)</label>
     <textarea data-f="rail_note"></textarea>
@@ -331,7 +329,7 @@
     <button class="sm ghost" style="width:100%;margin-top:8px" onclick="sendReportTelegram()">✈️ Send to Telegram</button>
   </section>
 
-  <div class="stamp">v0.6.14</div>
+  <div class="stamp">v0.6.15</div>
 </main>
 
 <script src="vendor/pizzip.js"></script>
