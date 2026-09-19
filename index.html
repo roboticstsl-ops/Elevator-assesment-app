@@ -327,7 +327,7 @@
     <button class="sm ghost" style="width:100%;margin-top:8px" onclick="sendReportTelegram()">✈️ Send to Telegram</button>
   </section>
 
-  <div class="stamp">v0.6.24</div>
+  <div class="stamp">v0.6.25</div>
 </main>
 
 <script src="vendor/pizzip.js"></script>
@@ -772,7 +772,11 @@ function initCanvas(railEl){
   // actually ends up on the drawing (e.g. "A=420mm") and in the mm box.
   // Cancelling / leaving it blank drops the line rather than keep a shape
   // with a meaningless number on it.
-  const askMeasurement = s => {
+  // Deferred to its own event-loop tick -- calling the blocking prompt()
+  // synchronously from inside a pointerup handler (while pointer capture
+  // is still being released) is a known way to crash Android WebViews.
+  const askMeasurement = s => { setTimeout(() => askMeasurementNow(s), 0); };
+  const askMeasurementNow = s => {
     const hadValue = s.value != null;
     const typed = prompt(`Measurement for ${s.label} (mm):`, hadValue ? String(s.value) : "");
     const num = typed == null ? NaN : parseFloat(typed);
@@ -785,11 +789,13 @@ function initCanvas(railEl){
         if (i >= 0) svg._shapes.splice(i, 1);
         svg._sel = -1;
       }
+      renderCanvas(svg);
       return;
     }
     s.value = num;
     const inp = railEl.querySelector(`[data-dim="${s.label}"]`);
     if (inp){ inp.value = num; inp.dispatchEvent(new Event("input", { bubbles:true })); }
+    renderCanvas(svg);
     save();
   };
   railEl.querySelectorAll("[data-dim]").forEach(inp => {
