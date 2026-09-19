@@ -327,7 +327,7 @@
     <button class="sm ghost" style="width:100%;margin-top:8px" onclick="sendReportTelegram()">✈️ Send to Telegram</button>
   </section>
 
-  <div class="stamp">v0.6.22</div>
+  <div class="stamp">v0.6.23</div>
 </main>
 
 <script src="vendor/pizzip.js"></script>
@@ -652,10 +652,18 @@ function canvasPoint(svg, e){
 }
 function applyVB(svg){ svg.setAttribute("viewBox", (svg._vb||[0,0,340,240]).join(" ")); }
 function gridSvg(v){
+  // AutoCAD-style: light minor lines every GRID units, a bolder major
+  // line every 5th one -- makes it easy to eyeball distances at a glance.
   let g = "";
   const x0 = Math.floor(v[0]/GRID)*GRID, y0 = Math.floor(v[1]/GRID)*GRID;
-  for (let x=x0; x<=v[0]+v[2]; x+=GRID) g += `<line x1="${x}" y1="${v[1]}" x2="${x}" y2="${v[1]+v[3]}" stroke="#e4e8ef" stroke-width="0.5"/>`;
-  for (let y=y0; y<=v[1]+v[3]; y+=GRID) g += `<line x1="${v[0]}" y1="${y}" x2="${v[0]+v[2]}" y2="${y}" stroke="#e4e8ef" stroke-width="0.5"/>`;
+  for (let x=x0; x<=v[0]+v[2]; x+=GRID){
+    const major = Math.round(x/GRID) % 5 === 0;
+    g += `<line x1="${x}" y1="${v[1]}" x2="${x}" y2="${v[1]+v[3]}" stroke="${major?'#c7cdd9':'#e4e8ef'}" stroke-width="${major?0.9:0.5}"/>`;
+  }
+  for (let y=y0; y<=v[1]+v[3]; y+=GRID){
+    const major = Math.round(y/GRID) % 5 === 0;
+    g += `<line x1="${v[0]}" y1="${y}" x2="${v[0]+v[2]}" y2="${y}" stroke="${major?'#c7cdd9':'#e4e8ef'}" stroke-width="${major?0.9:0.5}"/>`;
+  }
   return g;
 }
 // Big, legible overlay labels for the shipped Top railing photo -- drawn
@@ -693,7 +701,7 @@ function initCanvas(railEl){
   svg._shapes = tpl ? JSON.parse(JSON.stringify(tpl)) : [];
   svg._locked = !!(tpl || svg._bgImage);
   svg._tool = railKey === "top" ? "move" : "measure"; svg._sel = -1; svg._hist = [];
-  svg._grid = false; svg._ortho = true; svg._smart = true; svg._vb = [0,0,340,240];
+  svg._grid = railKey === "rear"; svg._ortho = true; svg._smart = true; svg._vb = [0,0,340,240];
   let drag = null;
   const tapState = { idx:-1, count:0, time:0 };   // triple-tap-to-delete a stamp
   const armSpan = railEl.querySelector("[data-arm]");
