@@ -239,6 +239,28 @@
   </section>
 
   <section class="card">
+    <h2>4.0 Elevator Integration Checks</h2>
+    <div class="grid2">
+      <div><label>Button module SKU</label><input type="text" data-f="btn_sku"></div>
+      <div><label>Connectors used on the button module</label><input type="text" data-f="btn_connectors"></div>
+    </div>
+    <h3>Number of connections and pinout</h3>
+    <div class="rf-wrap">
+      <table class="rf" id="pinout" style="min-width:auto"><thead>
+        <tr><th style="width:50px">PIN</th><th>USE</th><th style="width:120px">Color</th></tr>
+      </thead><tbody></tbody></table>
+    </div>
+
+    <h3>Control Panel Photos</h3>
+    <p class="hint">Kept separate from the general site photos in Section 5 — just the control panel/button module shots.</p>
+    <div style="display:flex;gap:8px;flex-wrap:wrap;margin-bottom:8px">
+      <button class="sm ghost" onclick="addPhoto(null,'panelPhotos')">+ Add photo / attachment</button>
+      <button class="sm ghost" onclick="takeImageQuick('panelPhotos','Control Panel')">📷 Take Image</button>
+    </div>
+    <div id="panelPhotos"></div>
+  </section>
+
+  <section class="card">
     <h2>1.1 Elevator Assessment</h2>
     <div id="checklist"></div>
     <label>Note (wall distances / RF mounting)</label>
@@ -289,20 +311,6 @@
   </section>
 
   <section class="card">
-    <h2>4.0 Elevator Integration Checks</h2>
-    <div class="grid2">
-      <div><label>Button module SKU</label><input type="text" data-f="btn_sku"></div>
-      <div><label>Connectors used on the button module</label><input type="text" data-f="btn_connectors"></div>
-    </div>
-    <h3>Number of connections and pinout</h3>
-    <div class="rf-wrap">
-      <table class="rf" id="pinout" style="min-width:auto"><thead>
-        <tr><th style="width:50px">PIN</th><th>USE</th><th style="width:120px">Color</th></tr>
-      </thead><tbody></tbody></table>
-    </div>
-  </section>
-
-  <section class="card">
     <h2>5. Photos &amp; Attachments</h2>
     <div style="display:flex;gap:8px;flex-wrap:wrap;margin-bottom:8px">
       <button class="sm ghost" onclick="addPhoto()">+ Add photo / attachment</button>
@@ -313,23 +321,13 @@
   </section>
 
   <section class="card">
-    <h2>6. Control Panel Photos</h2>
-    <p class="hint">Kept separate from the general site photos above — just the control panel/button module shots.</p>
-    <div style="display:flex;gap:8px;flex-wrap:wrap;margin-bottom:8px">
-      <button class="sm ghost" onclick="addPhoto(null,'panelPhotos')">+ Add photo / attachment</button>
-      <button class="sm ghost" onclick="takeImageQuick('panelPhotos','Control Panel')">📷 Take Image</button>
-    </div>
-    <div id="panelPhotos"></div>
-  </section>
-
-  <section class="card">
     <h2>Finish</h2>
     <p class="hint">Fills the official Site Visit Sheet template with everything above and opens it to save. For a PDF that matches exactly, open it in Docs / Word / WPS and <b>Save as PDF</b>.</p>
     <button class="block" onclick="exportDocx()">📝 Export report (.docx)</button>
     <button class="sm ghost" style="width:100%;margin-top:8px" onclick="sendReportTelegram()">✈️ Send to Telegram</button>
   </section>
 
-  <div class="stamp">v0.6.15</div>
+  <div class="stamp">v0.6.16</div>
 </main>
 
 <script src="vendor/pizzip.js"></script>
