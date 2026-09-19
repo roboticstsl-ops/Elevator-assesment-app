@@ -327,7 +327,7 @@
     <button class="sm ghost" style="width:100%;margin-top:8px" onclick="sendReportTelegram()">✈️ Send to Telegram</button>
   </section>
 
-  <div class="stamp">v0.6.18</div>
+  <div class="stamp">v0.6.19</div>
 </main>
 
 <script src="vendor/pizzip.js"></script>
@@ -365,7 +365,7 @@ const CHECKLIST = [
 ];
 const RF1_LOCS = ["Main lobby / reception", "Lift lobby GF", "d-bot charging point"];
 const RAILS = [
-  { key:"top",   name:"Top railing",   letters:["A","B","C"] },
+  { key:"top",   name:"Top Railing View",   letters:["A","B","C"] },
   { key:"rear",  name:"Rear railing",  letters:["A","B","C","D","E"] },
   { key:"left",  name:"Left railing",  letters:["A","B","C","D","E"] },
   { key:"right", name:"Right railing", letters:["A","B","C","D","E"] },
@@ -1381,7 +1381,7 @@ function docxData(s){
   for (let i = 0; i < 13; i++) d["chk_" + i] = s.checklist[i] || "";
 
   // railings: only the letters that actually have a value show up
-  const railOrder = [["top","Top railing"],["rear","Rear railing"],["left","Left railing"],["right","Right railing"]];
+  const railOrder = [["top","Top Railing View"],["rear","Rear railing"],["left","Left railing"],["right","Right railing"]];
   d.rail_all = [];
   railOrder.forEach(([key, name]) => {
     const dims = (s.rails[key] && (s.rails[key].dims || s.rails[key])) || {};
