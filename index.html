@@ -327,7 +327,7 @@
     <button class="sm ghost" style="width:100%;margin-top:8px" onclick="sendReportTelegram()">✈️ Send to Telegram</button>
   </section>
 
-  <div class="stamp">v0.6.21</div>
+  <div class="stamp">v0.6.22</div>
 </main>
 
 <script src="vendor/pizzip.js"></script>
@@ -1085,7 +1085,7 @@ function buildRails(){
         </div>` : ""}
         <div data-tool-rows>${drawToolbar(r.key)}</div>
         <div class="canvas-wrap">
-          <svg class="draw-canvas" data-canvas viewBox="0 0 340 240"></svg>
+          <svg class="draw-canvas" data-canvas viewBox="0 0 340 240" preserveAspectRatio="none"></svg>
           <button type="button" class="fs-enter" data-fs-enter title="Fullscreen — more room to draw">⛶ Fullscreen</button>
           <button type="button" class="fs-exit" data-fs-exit title="Exit fullscreen">✓ Submit</button>
         </div>
