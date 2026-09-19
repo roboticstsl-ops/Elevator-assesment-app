@@ -327,7 +327,7 @@
     <button class="sm ghost" style="width:100%;margin-top:8px" onclick="sendReportTelegram()">✈️ Send to Telegram</button>
   </section>
 
-  <div class="stamp">v0.6.19</div>
+  <div class="stamp">v0.6.20</div>
 </main>
 
 <script src="vendor/pizzip.js"></script>
@@ -424,7 +424,7 @@ function drawToolbar(railKey){
   if (railKey === "top"){
     // Top ships with a fixed photo -- no freehand drawing needed, just
     // Move plus the 4 stamps. Icon-only, one compact row for easy reach.
-    const icons = [["move","✋","Move"]].concat(STAMP_TOOLS);
+    const icons = [["move","✋","Move"],["line","╱","Line"]].concat(STAMP_TOOLS);
     return `<div class="draw-tools icon-only">` +
         icons.map(([t,icon,label]) => `<button type="button" data-tool="${t}"${t==="move"?' class="on"':''} title="${label}">${icon}</button>`).join("") +
         `<button type="button" data-act="undo" title="Undo">↩︎</button>` +
@@ -782,6 +782,12 @@ function initCanvas(railEl){
         const s = { t:"meas", x1:p.x, y1:p.y, x2:p.x, y2:p.y };
         svg._shapes.push(s); svg._sel = svg._shapes.length-1;
         drag = { mode:"meas", snapped:true }; svg.setPointerCapture(e.pointerId);
+        renderCanvas(svg); return;
+      }
+      if (svg._tool==="line"){
+        const s = { t:"line", x1:p.x, y1:p.y, x2:p.x, y2:p.y };
+        svg._shapes.push(s); svg._sel = svg._shapes.length-1;
+        drag = { mode:"draw", snapped:true }; svg.setPointerCapture(e.pointerId);
         renderCanvas(svg); return;
       }
       if (STAMP_KIND[svg._tool]){
