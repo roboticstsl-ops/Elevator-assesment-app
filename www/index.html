@@ -248,6 +248,9 @@
       </thead><tbody></tbody></table>
     </div>
 
+    <label>Notes</label>
+    <textarea data-f="panel_note" placeholder="Anything worth noting about the control panel — optional"></textarea>
+
     <h3>Control Panel Photos</h3>
     <p class="hint">Kept separate from the general site photos in Section 5 — just the control panel/button module shots.</p>
     <div style="display:flex;gap:8px;flex-wrap:wrap;margin-bottom:8px">
@@ -255,13 +258,6 @@
       <button class="sm ghost" onclick="takeImageQuick('panelPhotos','Control Panel')">📷 Take Image</button>
     </div>
     <div id="panelPhotos"></div>
-  </section>
-
-  <section class="card">
-    <h2>1.1 Elevator Assessment</h2>
-    <div id="checklist"></div>
-    <label>Note (wall distances / RF mounting)</label>
-    <textarea data-f="checklist_note"></textarea>
   </section>
 
   <section class="card">
@@ -318,13 +314,20 @@
   </section>
 
   <section class="card">
+    <h2>1.1 Elevator Assessment</h2>
+    <div id="checklist"></div>
+    <label>Note (wall distances / RF mounting)</label>
+    <textarea data-f="checklist_note"></textarea>
+  </section>
+
+  <section class="card">
     <h2>Finish</h2>
     <p class="hint">Fills the official Site Visit Sheet template with everything above and opens it to save. For a PDF that matches exactly, open it in Docs / Word / WPS and <b>Save as PDF</b>.</p>
     <button class="block" onclick="exportDocx()">📝 Export report (.docx)</button>
     <button class="sm ghost" style="width:100%;margin-top:8px" onclick="sendReportTelegram()">✈️ Send to Telegram</button>
   </section>
 
-  <div class="stamp">v0.6.17</div>
+  <div class="stamp">v0.6.18</div>
 </main>
 
 <script src="vendor/pizzip.js"></script>
@@ -703,8 +706,8 @@ function initCanvas(railEl){
   const renderTplBar = () => {
     updatePointerGate();
     toolRows.hidden = svg._locked;
-    tplImportBtn.hidden = svg._locked;
-    if (svg._locked) tplImportBox.hidden = true;
+    if (tplImportBtn) tplImportBtn.hidden = svg._locked;
+    if (svg._locked && tplImportBox) tplImportBox.hidden = true;
     tplStatus.textContent = svg._locked ? "🔒 Fixed diagram" : "✏️ Drawing — not locked yet";
     tplToggle.textContent = svg._locked ? "✏️ Edit drawing" : "✓ Done — lock it in";
     tplHint.textContent = svg._locked ? LOCKED_HINT : (isFullscreen() ? UNLOCKED_HINT : "Tap ⛶ Fullscreen below to draw/edit — the canvas only accepts touches in fullscreen.");
@@ -715,8 +718,8 @@ function initCanvas(railEl){
     else { saveRailTemplate(railKey, svg._shapes); svg._locked = true; save(); }
     renderTplBar();
   });
-  tplImportBtn.addEventListener("click", () => { tplImportBox.hidden = !tplImportBox.hidden; });
-  tplImportGo.addEventListener("click", () => {
+  if (tplImportBtn) tplImportBtn.addEventListener("click", () => { tplImportBox.hidden = !tplImportBox.hidden; });
+  if (tplImportGo) tplImportGo.addEventListener("click", () => {
     let data;
     try { data = JSON.parse(tplImportText.value); }
     catch(e){ showTip("That's not valid JSON — paste the export from the desktop drawer."); return; }
@@ -1012,14 +1015,14 @@ function buildRails(){
         <div class="tpl-bar" data-tpl-bar>
           <span class="tpl-status" data-tpl-status></span>
           <div style="display:flex;gap:6px">
-            <button type="button" class="sm ghost" data-tpl-import>📥 Import from desktop</button>
+            ${r.key !== "top" ? `<button type="button" class="sm ghost" data-tpl-import>📥 Import from desktop</button>` : ""}
             <button type="button" class="sm" data-tpl-toggle></button>
           </div>
         </div>
-        <div data-tpl-import-box hidden style="margin-bottom:8px">
+        ${r.key !== "top" ? `<div data-tpl-import-box hidden style="margin-bottom:8px">
           <textarea data-tpl-import-text rows="3" placeholder='Paste the JSON exported from the desktop drawer (tools/railing-drawer.html)…' style="width:100%;font:12px/1.4 ui-monospace,Menlo,monospace;padding:8px;border:1px solid var(--bd);border-radius:6px"></textarea>
           <button type="button" class="sm" style="margin-top:6px" data-tpl-import-go>Load into canvas</button>
-        </div>
+        </div>` : ""}
         <div data-tool-rows>${drawToolbar(r.key)}</div>
         <div class="canvas-wrap">
           <svg class="draw-canvas" data-canvas viewBox="0 0 340 240"></svg>
@@ -1373,7 +1376,7 @@ function docxData(s){
   const F = s.fields, d = {};
   ["doc_ref","prepared_by","date","version","project","site_name","client","address","maps_link",
    "elev_oem","elev_model","elev_id","elev_maint","plug_points","checklist_note",
-   "networks","survey_point","feasibility","btn_sku","btn_connectors","rail_note"
+   "networks","survey_point","feasibility","btn_sku","btn_connectors","rail_note","panel_note"
   ].forEach(k => d[k] = F[k] || "");
   for (let i = 0; i < 13; i++) d["chk_" + i] = s.checklist[i] || "";
 
