@@ -327,7 +327,7 @@
     <button class="sm ghost" style="width:100%;margin-top:8px" onclick="sendReportTelegram()">✈️ Send to Telegram</button>
   </section>
 
-  <div class="stamp">v0.6.20</div>
+  <div class="stamp">v0.6.21</div>
 </main>
 
 <script src="vendor/pizzip.js"></script>
@@ -432,12 +432,20 @@ function drawToolbar(railKey){
         `<span class="arm" data-arm></span>` +
       `</div>`;
   }
+  // Rear railing gets a couple of AutoCAD-mobile-style primitives on top
+  // of the usual set: Box/Circle to draft shapes directly (not just via
+  // Smart-cleaned freehand), and Offset to duplicate a selected shape
+  // outward by a fixed step for quick inner/outer-edge copies.
+  const tools = railKey === "rear"
+    ? SHAPE_TOOLS.concat([["rect","▭","Box"],["circle","◯","Circle"]])
+    : SHAPE_TOOLS;
   return `<div class="draw-tools">` +
-      SHAPE_TOOLS.map(([t,icon,label]) => `<button type="button" data-tool="${t}"${t==="measure"?' class="on"':''}>${icon} ${label}</button>`).join("") +
+      tools.map(([t,icon,label]) => `<button type="button" data-tool="${t}"${t==="measure"?' class="on"':''}>${icon} ${label}</button>`).join("") +
       `<span class="arm" data-arm></span>` +
     `</div>` +
     `<div class="draw-tools cad">` +
       `<button type="button" data-act="undo">↩︎ Undo</button>` +
+      (railKey === "rear" ? `<button type="button" data-act="offset" title="Duplicate the selected shape, offset outward">⧉ Offset</button>` : "") +
       `<button type="button" data-act="clear">Clear</button>` +
     `</div>`;
 }
@@ -512,6 +520,7 @@ function nextDimLetter(shapes){
 }
 function shapeBox(s){
   if (s.t==="rect") return { x:Math.min(s.x,s.x+s.w), y:Math.min(s.y,s.y+s.h), w:Math.abs(s.w), h:Math.abs(s.h) };
+  if (s.t==="circle") return { x:s.cx-s.r, y:s.cy-s.r, w:s.r*2, h:s.r*2 };
   if (s.t==="line" || s.t==="arrow" || s.t==="dim" || s.t==="meas") return { x:Math.min(s.x1,s.x2), y:Math.min(s.y1,s.y2), w:Math.abs(s.x2-s.x1), h:Math.abs(s.y2-s.y1) };
   if (s.t==="path"){ const xs=s.d.map(p=>p[0]), ys=s.d.map(p=>p[1]);
     const x=Math.min(...xs), y=Math.min(...ys); return { x, y, w:Math.max(...xs)-x, h:Math.max(...ys)-y }; }
@@ -527,6 +536,7 @@ function shapeHandles(s){
     ];
   }
   if (s.t==="line" || s.t==="arrow" || s.t==="dim" || s.t==="meas") return [{k:"p1",x:s.x1,y:s.y1},{k:"p2",x:s.x2,y:s.y2}];
+  if (s.t==="circle") return [{k:"r",x:s.cx+s.r,y:s.cy}];
   return [];
 }
 /* PowerPoint-style smart guides: snap a moving/resizing box's edges/centre to
@@ -553,6 +563,7 @@ function alignSnap(shapes, sel, mb){
 }
 function moveShape(s, o, dx, dy){
   if (s.t==="rect" || s.t==="text"){ s.x = o.x+dx; s.y = o.y+dy; }
+  else if (s.t==="circle"){ s.cx = o.cx+dx; s.cy = o.cy+dy; }
   else if (s.t==="path"){ s.d = o.d.map(pt => [pt[0]+dx, pt[1]+dy]); }
   else { s.x1 = o.x1+dx; s.y1 = o.y1+dy; s.x2 = o.x2+dx; s.y2 = o.y2+dy; }
 }
@@ -611,6 +622,7 @@ function shapesToSvg(shapes, sel){
         m = `<rect x="${b0.x}" y="${b0.y}" width="${b0.w}" height="${b0.h}" fill="none" stroke="#111" stroke-width="2"/>`;
       }
     }
+    else if (s.t==="circle") m = `<circle cx="${s.cx}" cy="${s.cy}" r="${s.r}" fill="none" stroke="#111" stroke-width="2"/>`;
     else if (s.t==="line") m = `<line x1="${s.x1}" y1="${s.y1}" x2="${s.x2}" y2="${s.y2}" stroke="#111" stroke-width="2"/>`;
     else if (s.t==="arrow") m = `<line x1="${s.x1}" y1="${s.y1}" x2="${s.x2}" y2="${s.y2}" stroke="#111" stroke-width="2"/>` + arrowHead(s.x1,s.y1,s.x2,s.y2);
     else if (s.t==="path") m = `<polyline points="${s.d.map(p=>p[0]+','+p[1]).join(' ')}" fill="none" stroke="#111" stroke-width="2" stroke-linejoin="round" stroke-linecap="round"/>`;
@@ -757,6 +769,26 @@ function initCanvas(railEl){
       if (svg._hist.length){ svg._shapes = JSON.parse(svg._hist.pop()); svg._sel = -1; renderCanvas(svg); save(); }
     } else if (act === "clear"){
       if (svg._shapes.length){ snap(); svg._shapes = []; svg._sel = -1; renderCanvas(svg); save(); }
+    } else if (act === "offset"){
+      const OFF = 8;
+      const src = svg._shapes[svg._sel];
+      if (!src){ showTip("Select a shape first, then Offset duplicates it outward."); return; }
+      let copy = null;
+      if (src.t === "rect" && !src.kind){
+        copy = { t:"rect", x:src.x-OFF, y:src.y-OFF, w:src.w+OFF*2, h:src.h+OFF*2 };
+      } else if (src.t === "circle"){
+        copy = { t:"circle", cx:src.cx, cy:src.cy, r:src.r+OFF };
+      } else if (src.t === "line"){
+        const dx = src.x2-src.x1, dy = src.y2-src.y1, len = Math.hypot(dx,dy) || 1;
+        const nx = -dy/len*OFF, ny = dx/len*OFF;   // perpendicular unit vector, scaled
+        copy = { t:"line", x1:src.x1+nx, y1:src.y1+ny, x2:src.x2+nx, y2:src.y2+ny };
+      } else {
+        showTip("Offset only works on a plain Box, Circle or Line.");
+        return;
+      }
+      snap();
+      svg._shapes.push(copy); svg._sel = svg._shapes.length-1;
+      renderCanvas(svg); save();
     }
   });
   svg.addEventListener("pointerdown", e => {
@@ -788,6 +820,18 @@ function initCanvas(railEl){
         const s = { t:"line", x1:p.x, y1:p.y, x2:p.x, y2:p.y };
         svg._shapes.push(s); svg._sel = svg._shapes.length-1;
         drag = { mode:"draw", snapped:true }; svg.setPointerCapture(e.pointerId);
+        renderCanvas(svg); return;
+      }
+      if (svg._tool==="rect"){
+        const s = { t:"rect", x:p.x, y:p.y, w:0, h:0 };
+        svg._shapes.push(s); svg._sel = svg._shapes.length-1;
+        drag = { mode:"draw", snapped:true }; svg.setPointerCapture(e.pointerId);
+        renderCanvas(svg); return;
+      }
+      if (svg._tool==="circle"){
+        const s = { t:"circle", cx:p.x, cy:p.y, r:0 };
+        svg._shapes.push(s); svg._sel = svg._shapes.length-1;
+        drag = { mode:"circle", snapped:true }; svg.setPointerCapture(e.pointerId);
         renderCanvas(svg); return;
       }
       if (STAMP_KIND[svg._tool]){
@@ -864,6 +908,10 @@ function initCanvas(railEl){
              showHud(Math.hypot(q.x-s.x1,q.y-s.y1), Math.atan2(q.y-s.y1,q.x-s.x1)); }
       renderCanvas(svg); return;
     }
+    if (drag.mode==="circle"){
+      s.r = Math.hypot(raw.x-s.cx, raw.y-s.cy); showHud(s.r*2, 0);
+      renderCanvas(svg); return;
+    }
     if (drag.mode==="move"){
       const o = drag.orig;
       let dx = raw.x-drag.start.x, dy = raw.y-drag.start.y;
@@ -893,7 +941,8 @@ function initCanvas(railEl){
         s.y = Math.min(t,bt); s.h = Math.max(10, Math.abs(bt-t));
         svg._guides = guides;
         showHud(s.w, 0);
-      } else if (k==="p1"){ s.x1 = p.x; s.y1 = p.y; }
+      } else if (k==="r"){ s.r = Math.max(5, Math.hypot(raw.x-s.cx, raw.y-s.cy)); showHud(s.r*2, 0); }
+      else if (k==="p1"){ s.x1 = p.x; s.y1 = p.y; }
       else {
         const q = applyOrtho(svg._ortho, s.x1, s.y1, p);
         s.x2 = q.x; s.y2 = q.y;
@@ -952,6 +1001,11 @@ function initCanvas(railEl){
           s.w = DW; s.h = DH;
         }
       } else if (Math.hypot(s.x2-s.x1, s.y2-s.y1) < 6){ s.x2 = s.x1+90; }
+      renderCanvas(svg);
+    }
+    if (mode==="circle"){
+      const s = svg._shapes[svg._sel];
+      if (s.r < 6) s.r = 30;   // a tap with no drag still drops a usable circle
       renderCanvas(svg);
     }
     if (mode==="dim"){
