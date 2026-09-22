@@ -327,7 +327,7 @@
     <button class="sm ghost" style="width:100%;margin-top:8px" onclick="sendReportTelegram()">✈️ Send to Telegram</button>
   </section>
 
-  <div class="stamp">v0.6.25</div>
+  <div class="stamp">v0.6.26</div>
 </main>
 
 <script src="vendor/pizzip.js"></script>
@@ -432,11 +432,12 @@ function drawToolbar(railKey){
         `<span class="arm" data-arm></span>` +
       `</div>`;
   }
-  // Rear railing gets a couple of AutoCAD-mobile-style primitives on top
-  // of the usual set: Box/Circle to draft shapes directly (not just via
-  // Smart-cleaned freehand), and Offset to duplicate a selected shape
-  // outward by a fixed step for quick inner/outer-edge copies.
-  const tools = railKey === "rear"
+  // Rear (proven first, per request) and Left railing get a couple of
+  // AutoCAD-mobile-style primitives on top of the usual set: Box/Circle to
+  // draft shapes directly (not just via Smart-cleaned freehand), and
+  // Offset to duplicate a selected shape outward by a typed distance.
+  const isCadRail = railKey === "rear" || railKey === "left";
+  const tools = isCadRail
     ? SHAPE_TOOLS.concat([["rect","▭","Box"],["circle","◯","Circle"]])
     : SHAPE_TOOLS;
   return `<div class="draw-tools">` +
@@ -445,7 +446,7 @@ function drawToolbar(railKey){
     `</div>` +
     `<div class="draw-tools cad">` +
       `<button type="button" data-act="undo">↩︎ Undo</button>` +
-      (railKey === "rear" ? `<button type="button" data-act="offset" title="Duplicate the selected shape, offset outward">⧉ Offset</button>` : "") +
+      (isCadRail ? `<button type="button" data-act="offset" title="Duplicate the selected shape, offset outward">⧉ Offset</button>` : "") +
       `<button type="button" data-act="clear">Clear</button>` +
     `</div>`;
 }
@@ -593,6 +594,13 @@ function snapPoint(shapes, p, skip){
   cand.forEach(([x,y]) => { const d = Math.hypot(p.x-x, p.y-y); if (d < bd){ bd = d; best = { x, y }; } });
   return best;
 }
+// Small white-haloed text centered on a plain Box/Circle showing the
+// typed size label (e.g. "120x80mm"), same visual language as the
+// measurement-line tags. No-op if the shape has none.
+function shapeSizeLabelSvg(s, cx, cy){
+  if (!s.sizeLabel) return "";
+  return `<text x="${cx}" y="${cy}" font-size="10" font-weight="700" fill="#1652c9" font-family="Arial, sans-serif" text-anchor="middle" dominant-baseline="central" paint-order="stroke" stroke="#fff" stroke-width="3">${esc(s.sizeLabel)}</text>`;
+}
 function arrowHead(x1,y1,x2,y2){
   const a = Math.atan2(y2-y1, x2-x1), L = 13;
   const p1x = x2 - L*Math.cos(a-0.5), p1y = y2 - L*Math.sin(a-0.5);
@@ -619,10 +627,12 @@ function shapesToSvg(shapes, sel){
         m = `<rect x="${b0.x}" y="${b0.y}" width="${b0.w}" height="${b0.h}" rx="4" fill="#fff" stroke="#111" stroke-width="2"/>`
           + `<text x="${b0.x+b0.w/2}" y="${b0.y+b0.h/2}" font-size="${Math.max(11,Math.min(b0.w,b0.h)*0.6)}" text-anchor="middle" dominant-baseline="central">🔌</text>`;
       } else {
-        m = `<rect x="${b0.x}" y="${b0.y}" width="${b0.w}" height="${b0.h}" fill="none" stroke="#111" stroke-width="2"/>`;
+        m = `<rect x="${b0.x}" y="${b0.y}" width="${b0.w}" height="${b0.h}" fill="none" stroke="#111" stroke-width="2"/>`
+          + shapeSizeLabelSvg(s, b0.x+b0.w/2, b0.y+b0.h/2);
       }
     }
-    else if (s.t==="circle") m = `<circle cx="${s.cx}" cy="${s.cy}" r="${s.r}" fill="none" stroke="#111" stroke-width="2"/>`;
+    else if (s.t==="circle") m = `<circle cx="${s.cx}" cy="${s.cy}" r="${s.r}" fill="none" stroke="#111" stroke-width="2"/>`
+      + shapeSizeLabelSvg(s, s.cx, s.cy);
     else if (s.t==="line") m = `<line x1="${s.x1}" y1="${s.y1}" x2="${s.x2}" y2="${s.y2}" stroke="#111" stroke-width="2"/>`;
     else if (s.t==="arrow") m = `<line x1="${s.x1}" y1="${s.y1}" x2="${s.x2}" y2="${s.y2}" stroke="#111" stroke-width="2"/>` + arrowHead(s.x1,s.y1,s.x2,s.y2);
     else if (s.t==="path") m = `<polyline points="${s.d.map(p=>p[0]+','+p[1]).join(' ')}" fill="none" stroke="#111" stroke-width="2" stroke-linejoin="round" stroke-linecap="round"/>`;
@@ -706,7 +716,7 @@ function initCanvas(railEl){
   svg._shapes = tpl ? JSON.parse(JSON.stringify(tpl)) : [];
   svg._locked = !!(tpl || svg._bgImage);
   svg._tool = railKey === "top" ? "move" : "measure"; svg._sel = -1; svg._hist = [];
-  svg._grid = railKey === "rear"; svg._ortho = true; svg._smart = true; svg._vb = [0,0,340,240];
+  svg._grid = (railKey === "rear" || railKey === "left"); svg._ortho = true; svg._smart = true; svg._vb = [0,0,340,240];
   let drag = null;
   const tapState = { idx:-1, count:0, time:0 };   // triple-tap-to-delete a stamp
   const armSpan = railEl.querySelector("[data-arm]");
@@ -798,6 +808,20 @@ function initCanvas(railEl){
     renderCanvas(svg);
     save();
   };
+  // Same idea as askMeasurement, for a Box/Circle: after drawing one by
+  // eye, optionally type its real size as a small label tag (doesn't
+  // resize the sketch itself -- the board has no defined mm-per-pixel
+  // scale, so this stays a label, consistent with how Measure/dim
+  // already work here). Optional: blank/cancel just leaves it unlabeled.
+  const askShapeSize = s => { setTimeout(() => askShapeSizeNow(s), 0); };
+  const askShapeSizeNow = s => {
+    let typed;
+    if (s.t === "rect") typed = prompt("Size label for this box, e.g. 120x80mm (optional):", s.sizeLabel || "");
+    else if (s.t === "circle") typed = prompt("Size label for this circle, e.g. Ø40mm (optional):", s.sizeLabel || "");
+    else { renderCanvas(svg); return; }
+    if (typed != null) s.sizeLabel = typed.trim();
+    renderCanvas(svg); save();
+  };
   railEl.querySelectorAll("[data-dim]").forEach(inp => {
     inp.addEventListener("focus", () => { svg._activeDim = inp.dataset.dim; svg.classList.add("arming"); armSpan.textContent = "draw " + inp.dataset.dim + " on the board"; });
     inp.addEventListener("input", () => { if (svg._activeDim === inp.dataset.dim) clearArm(); });
@@ -814,25 +838,30 @@ function initCanvas(railEl){
     } else if (act === "clear"){
       if (svg._shapes.length){ snap(); svg._shapes = []; svg._sel = -1; renderCanvas(svg); save(); }
     } else if (act === "offset"){
-      const OFF = 8;
       const src = svg._shapes[svg._sel];
       if (!src){ showTip("Select a shape first, then Offset duplicates it outward."); return; }
-      let copy = null;
-      if (src.t === "rect" && !src.kind){
-        copy = { t:"rect", x:src.x-OFF, y:src.y-OFF, w:src.w+OFF*2, h:src.h+OFF*2 };
-      } else if (src.t === "circle"){
-        copy = { t:"circle", cx:src.cx, cy:src.cy, r:src.r+OFF };
-      } else if (src.t === "line"){
-        const dx = src.x2-src.x1, dy = src.y2-src.y1, len = Math.hypot(dx,dy) || 1;
-        const nx = -dy/len*OFF, ny = dx/len*OFF;   // perpendicular unit vector, scaled
-        copy = { t:"line", x1:src.x1+nx, y1:src.y1+ny, x2:src.x2+nx, y2:src.y2+ny };
-      } else {
+      if (!(src.t === "rect" && !src.kind) && src.t !== "circle" && src.t !== "line"){
         showTip("Offset only works on a plain Box, Circle or Line.");
         return;
       }
-      snap();
-      svg._shapes.push(copy); svg._sel = svg._shapes.length-1;
-      renderCanvas(svg); save();
+      setTimeout(() => {
+        const typed = prompt("Offset distance (board units):", "8");
+        const OFF = typed == null ? NaN : parseFloat(typed);
+        if (typed == null || isNaN(OFF)) return;   // cancelled / not a number -- do nothing
+        let copy = null;
+        if (src.t === "rect"){
+          copy = { t:"rect", x:src.x-OFF, y:src.y-OFF, w:src.w+OFF*2, h:src.h+OFF*2 };
+        } else if (src.t === "circle"){
+          copy = { t:"circle", cx:src.cx, cy:src.cy, r:src.r+OFF };
+        } else if (src.t === "line"){
+          const dx = src.x2-src.x1, dy = src.y2-src.y1, len = Math.hypot(dx,dy) || 1;
+          const nx = -dy/len*OFF, ny = dx/len*OFF;   // perpendicular unit vector, scaled
+          copy = { t:"line", x1:src.x1+nx, y1:src.y1+ny, x2:src.x2+nx, y2:src.y2+ny };
+        }
+        snap();
+        svg._shapes.push(copy); svg._sel = svg._shapes.length-1;
+        renderCanvas(svg); save();
+      }, 0);
     }
   });
   svg.addEventListener("pointerdown", e => {
@@ -1043,12 +1072,14 @@ function initCanvas(railEl){
           const DH = { green:36, redx:36, emergency:32,  socket:36 }[s.kind] || 50;
           s.w = DW; s.h = DH;
         }
+        if (!s.kind) askShapeSize(s);   // plain box (not a Top stamp) -- offer a typed size label
       } else if (Math.hypot(s.x2-s.x1, s.y2-s.y1) < 6){ s.x2 = s.x1+90; }
       renderCanvas(svg);
     }
     if (mode==="circle"){
       const s = svg._shapes[svg._sel];
       if (s.r < 6) s.r = 30;   // a tap with no drag still drops a usable circle
+      askShapeSize(s);
       renderCanvas(svg);
     }
     if (mode==="dim"){
