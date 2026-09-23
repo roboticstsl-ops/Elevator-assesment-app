@@ -138,7 +138,7 @@
      from JS once fullscreen is actually active. */
   .fs-enter { position:absolute; top:6px; right:8px; z-index:2; padding:10px 16px; font-size:14px; font-weight:700;
     background:var(--accent); color:#fff; border:none; border-radius:8px; box-shadow:0 2px 8px rgba(0,0,0,.2); }
-  .fs-exit, .fs-zoom { display:none; }
+  .fs-exit { display:none; }
   .draw-area:fullscreen, .draw-area:-webkit-full-screen {
     background:#fff; display:flex; flex-direction:column; padding:10px; overflow:auto;
     transform-origin:50% 50%; }
@@ -150,10 +150,6 @@
   .draw-area:fullscreen .fs-exit, .draw-area:-webkit-full-screen .fs-exit {
     display:flex; position:fixed; top:10px; right:10px; z-index:99999; padding:10px 16px;
     font-size:14px; font-weight:700; background:var(--accent); color:#fff; border:none;
-    border-radius:8px; box-shadow:0 2px 10px rgba(0,0,0,.3); align-items:center; gap:6px; }
-  .draw-area:fullscreen .fs-zoom, .draw-area:-webkit-full-screen .fs-zoom {
-    display:flex; position:fixed; top:10px; left:10px; z-index:99999; padding:10px 16px;
-    font-size:14px; font-weight:700; background:#fff; color:var(--ink); border:1px solid var(--bd);
     border-radius:8px; box-shadow:0 2px 10px rgba(0,0,0,.3); align-items:center; gap:6px; }
   /* In-page replacement for window.prompt() inside the fullscreen drawing
      area -- a native prompt() forces the WebView to drop Fullscreen. */
@@ -345,7 +341,7 @@
     <button class="sm ghost" style="width:100%;margin-top:8px" onclick="sendReportTelegram()">✈️ Send to Telegram</button>
   </section>
 
-  <div class="stamp">v0.6.32</div>
+  <div class="stamp">v0.6.33</div>
 </main>
 
 <script src="vendor/pizzip.js"></script>
@@ -447,6 +443,8 @@ function drawToolbar(railKey){
         icons.map(([t,icon,label]) => `<button type="button" data-tool="${t}"${t==="move"?' class="on"':''} title="${label}">${icon}</button>`).join("") +
         `<button type="button" data-act="undo" title="Undo">↩︎</button>` +
         `<button type="button" data-act="clear" title="Clear">🗑</button>` +
+        `<button type="button" data-act="zoomout" title="Zoom out">➖</button>` +
+        `<button type="button" data-act="zoomin" title="Zoom in">➕</button>` +
         `<span class="arm" data-arm></span>` +
       `</div>`;
   }
@@ -466,6 +464,8 @@ function drawToolbar(railKey){
       `<button type="button" data-act="undo">↩︎ Undo</button>` +
       (isCadRail ? `<button type="button" data-act="offset" title="Duplicate the selected shape, offset outward">⧉ Offset</button>` : "") +
       `<button type="button" data-act="clear">Clear</button>` +
+      `<button type="button" data-act="zoomout" title="Zoom out">➖ Zoom out</button>` +
+      `<button type="button" data-act="zoomin" title="Zoom in">➕ Zoom in</button>` +
     `</div>`;
 }
 const GRID = 10;
@@ -781,13 +781,20 @@ function askInline(area, message, defVal, cb){
     else if (e.key === "Escape") done(null);
   });
 }
-// Zoom the canvas out around its current centre -- a manual escape hatch
-// for the auto-fit view, since drawings can end up tighter than useful
-// once several shapes are on the board.
+// Zoom the canvas in/out around its current centre -- a manual escape
+// hatch for the auto-fit view, since drawings can end up tighter than
+// useful once several shapes are on the board.
 function zoomCanvasOut(svg){
   const vb = svg._vb || [0,0,340,240];
   const cx = vb[0]+vb[2]/2, cy = vb[1]+vb[3]/2;
   const nw = Math.min(vb[2]*1.3, 340*4), nh = Math.min(vb[3]*1.3, 240*4);
+  svg._vb = [cx-nw/2, cy-nh/2, nw, nh];
+  applyVB(svg); renderCanvas(svg);
+}
+function zoomCanvasIn(svg){
+  const vb = svg._vb || [0,0,340,240];
+  const cx = vb[0]+vb[2]/2, cy = vb[1]+vb[3]/2;
+  const nw = Math.max(vb[2]/1.3, 340/4), nh = Math.max(vb[3]/1.3, 240/4);
   svg._vb = [cx-nw/2, cy-nh/2, nw, nh];
   applyVB(svg); renderCanvas(svg);
 }
@@ -819,8 +826,6 @@ function initCanvas(railEl){
     : "Draw this railing once (📏 Measure drags fill A, B, C… automatically; ✏️ Pen for a rough outline). Once it looks right, tap ✓ Done — every future report reuses this exact drawing and you'll only ever type numbers.";
   const drawArea = railEl.querySelector("[data-draw-area]");
   const isFullscreen = () => document.fullscreenElement === drawArea || document.webkitFullscreenElement === drawArea;
-  const fsZoomBtn = railEl.querySelector("[data-fs-zoom]");
-  if (fsZoomBtn) fsZoomBtn.addEventListener("click", () => zoomCanvasOut(svg));
   // Two-finger pinch shrinks the WHOLE fullscreen area (toolbar, buttons,
   // canvas -- everything), not just the drawing's own viewBox. Fullscreen
   // API blocks the browser's native pinch-zoom on most engines, so this
@@ -961,6 +966,10 @@ function initCanvas(railEl){
       if (svg._hist.length){ svg._shapes = JSON.parse(svg._hist.pop()); svg._sel = -1; renderCanvas(svg); save(); }
     } else if (act === "clear"){
       if (svg._shapes.length){ snap(); svg._shapes = []; svg._sel = -1; renderCanvas(svg); save(); }
+    } else if (act === "zoomout"){
+      zoomCanvasOut(svg);
+    } else if (act === "zoomin"){
+      zoomCanvasIn(svg);
     } else if (act === "offset"){
       const src = svg._shapes[svg._sel];
       if (!src){ showTip("Select a shape first, then Offset duplicates it outward."); return; }
@@ -1285,7 +1294,6 @@ function buildRails(){
           <svg class="draw-canvas" data-canvas viewBox="0 0 340 240" preserveAspectRatio="none"></svg>
           <button type="button" class="fs-enter" data-fs-enter title="Fullscreen — more room to draw">⛶ Fullscreen</button>
           <button type="button" class="fs-exit" data-fs-exit title="Exit fullscreen">✓ Submit</button>
-          <button type="button" class="fs-zoom" data-fs-zoom title="Zoom out">➖ Zoom out</button>
         </div>
       </div>
       <p class="hint" data-tpl-hint></p>
