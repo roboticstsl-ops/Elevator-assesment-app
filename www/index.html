@@ -341,7 +341,7 @@
     <button class="sm ghost" style="width:100%;margin-top:8px" onclick="sendReportTelegram()">✈️ Send to Telegram</button>
   </section>
 
-  <div class="stamp">v0.6.33</div>
+  <div class="stamp">v0.6.34</div>
 </main>
 
 <script src="vendor/pizzip.js"></script>
@@ -415,7 +415,7 @@ function floorLabel(ci){ return floorNames[ci] || defaultFloorLabel(ci); }
 // need; Move to reposition/select, Pen for a rough freehand outline
 // (auto-cleaned into a straight line/box by the same "smart" logic that
 // used to be a toggle -- it's just always on now).
-const SHAPE_TOOLS = [["move","✋","Move"],["measure","📏","Measure"],["pen","✏️","Pen"]];
+const SHAPE_TOOLS = [["move","✋","Move"],["measure","📏","Measure"],["pen","✏️","Pen"],["line","╱","Line"]];
 // Top-railing-only stamps -- each is really just a "rect" shape tagged
 // with a kind, so it reuses the exact same move/resize handles every
 // other box already has, adjustable size for free.
@@ -651,7 +651,8 @@ function shapesToSvg(shapes, sel){
     }
     else if (s.t==="circle") m = `<circle cx="${s.cx}" cy="${s.cy}" r="${s.r}" fill="none" stroke="#111" stroke-width="2"/>`
       + shapeSizeLabelSvg(s, s.cx, s.cy);
-    else if (s.t==="line") m = `<line x1="${s.x1}" y1="${s.y1}" x2="${s.x2}" y2="${s.y2}" stroke="#111" stroke-width="2"/>`;
+    else if (s.t==="line") m = `<line x1="${s.x1}" y1="${s.y1}" x2="${s.x2}" y2="${s.y2}" stroke="#111" stroke-width="2"/>`
+      + shapeSizeLabelSvg(s, (s.x1+s.x2)/2, (s.y1+s.y2)/2);
     else if (s.t==="arrow") m = `<line x1="${s.x1}" y1="${s.y1}" x2="${s.x2}" y2="${s.y2}" stroke="#111" stroke-width="2"/>` + arrowHead(s.x1,s.y1,s.x2,s.y2);
     else if (s.t==="path") m = `<polyline points="${s.d.map(p=>p[0]+','+p[1]).join(' ')}" fill="none" stroke="#111" stroke-width="2" stroke-linejoin="round" stroke-linecap="round"/>`;
     else if (s.t==="dim" || s.t==="meas"){
@@ -928,14 +929,16 @@ function initCanvas(railEl){
       save();
     });
   };
-  // Same idea as askMeasurement, for a Box/Circle: after drawing one by
-  // eye, optionally type its real size as a small label tag (doesn't
+  // Same idea as askMeasurement, for a Box/Circle/Line: after drawing one
+  // by eye, optionally type its real size as a small label tag (doesn't
   // resize the sketch itself -- the board has no defined mm-per-pixel
   // scale, so this stays a label, consistent with how Measure/dim
   // already work here). Optional: blank/cancel just leaves it unlabeled.
   const askShapeSize = s => {
-    if (s.t !== "rect" && s.t !== "circle"){ renderCanvas(svg); return; }
-    const msg = s.t === "rect" ? "Size label for this box, e.g. 120x80mm (optional):" : "Size label for this circle, e.g. Ø40mm (optional):";
+    if (s.t !== "rect" && s.t !== "circle" && s.t !== "line"){ renderCanvas(svg); return; }
+    const msg = s.t === "rect" ? "Size label for this box, e.g. 120x80mm (optional):"
+      : s.t === "circle" ? "Size label for this circle, e.g. Ø40mm (optional):"
+      : "Length label for this line, e.g. 420mm (optional):";
     askInline(drawArea, msg, s.sizeLabel || "", typed => {
       if (typed != null) s.sizeLabel = typed.trim();
       renderCanvas(svg); save();
@@ -1209,7 +1212,10 @@ function initCanvas(railEl){
           s.w = DW; s.h = DH;
         }
         if (!s.kind) askShapeSize(s);   // plain box (not a Top stamp) -- offer a typed size label
-      } else if (Math.hypot(s.x2-s.x1, s.y2-s.y1) < 6){ s.x2 = s.x1+90; }
+      } else {
+        if (Math.hypot(s.x2-s.x1, s.y2-s.y1) < 6) s.x2 = s.x1+90;   // a tap with no drag still drops a usable line
+        if (s.t === "line") askShapeSize(s);
+      }
       renderCanvas(svg);
     }
     if (mode==="circle"){
