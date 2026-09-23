@@ -140,7 +140,8 @@
     background:var(--accent); color:#fff; border:none; border-radius:8px; box-shadow:0 2px 8px rgba(0,0,0,.2); }
   .fs-exit, .fs-zoom { display:none; }
   .draw-area:fullscreen, .draw-area:-webkit-full-screen {
-    background:#fff; display:flex; flex-direction:column; padding:10px; overflow:auto; }
+    background:#fff; display:flex; flex-direction:column; padding:10px; overflow:auto;
+    transform-origin:50% 50%; }
   .draw-area:fullscreen .draw-tools, .draw-area:-webkit-full-screen .draw-tools { flex:none; }
   .draw-area:fullscreen .tpl-bar, .draw-area:-webkit-full-screen .tpl-bar { flex:none; }
   .draw-area:fullscreen .canvas-wrap, .draw-area:-webkit-full-screen .canvas-wrap { flex:1; min-height:0; }
@@ -344,7 +345,7 @@
     <button class="sm ghost" style="width:100%;margin-top:8px" onclick="sendReportTelegram()">✈️ Send to Telegram</button>
   </section>
 
-  <div class="stamp">v0.6.28</div>
+  <div class="stamp">v0.6.29</div>
 </main>
 
 <script src="vendor/pizzip.js"></script>
@@ -820,6 +821,38 @@ function initCanvas(railEl){
   const isFullscreen = () => document.fullscreenElement === drawArea || document.webkitFullscreenElement === drawArea;
   const fsZoomBtn = railEl.querySelector("[data-fs-zoom]");
   if (fsZoomBtn) fsZoomBtn.addEventListener("click", () => zoomCanvasOut(svg));
+  // Two-finger pinch shrinks the WHOLE fullscreen area (toolbar, buttons,
+  // canvas -- everything), not just the drawing's own viewBox. Fullscreen
+  // API blocks the browser's native pinch-zoom on most engines, so this
+  // drives a plain CSS transform by hand from raw pointer distance.
+  (function initPinchZoom(){
+    const pts = new Map();
+    let baseScale = 1, baseDist = 0;
+    const dist = () => { const a = [...pts.values()]; return Math.hypot(a[0].x-a[1].x, a[0].y-a[1].y) || 1; };
+    drawArea.addEventListener("pointerdown", e => {
+      if (!isFullscreen()) return;
+      pts.set(e.pointerId, { x:e.clientX, y:e.clientY });
+      if (pts.size === 2){
+        baseDist = dist();
+        baseScale = parseFloat(drawArea.dataset.zoom || "1");
+        // Don't let the finger that's mid-draw also keep resizing a shape
+        // once a second finger joins in for the pinch.
+        if (drag){ const [firstId] = pts.keys(); svg.dispatchEvent(new PointerEvent("pointercancel", { pointerId:firstId })); }
+      }
+    });
+    drawArea.addEventListener("pointermove", e => {
+      if (!pts.has(e.pointerId)) return;
+      pts.set(e.pointerId, { x:e.clientX, y:e.clientY });
+      if (pts.size === 2){
+        const scale = Math.min(1, Math.max(0.4, baseScale * (dist() / baseDist)));
+        drawArea.dataset.zoom = scale;
+        drawArea.style.transform = `scale(${scale})`;
+      }
+    });
+    const release = e => pts.delete(e.pointerId);
+    drawArea.addEventListener("pointerup", release);
+    drawArea.addEventListener("pointercancel", release);
+  })();
   // Editing only works in fullscreen -- the inline view is too cramped to
   // draw/place stamps in reliably, so it's tap-to-select-a-tool-then-go-
   // fullscreen-to-actually-touch-the-canvas.
@@ -1803,6 +1836,7 @@ document.addEventListener("click", e => {
 /* ---------- fullscreen drawing (railing canvases) ---------- */
 function enterDrawFullscreen(area){
   if (!area) return;
+  area.style.transform = ""; area.dataset.zoom = "1";   // start each fullscreen session unzoomed
   const req = area.requestFullscreen || area.webkitRequestFullscreen;
   if (!req){ showTip("Fullscreen isn't supported here — reinstall the latest APK."); return; }
   req.call(area).then(() => {
