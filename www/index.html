@@ -341,7 +341,7 @@
     <button class="sm ghost" style="width:100%;margin-top:8px" onclick="sendReportTelegram()">✈️ Send to Telegram</button>
   </section>
 
-  <div class="stamp">v0.6.35</div>
+  <div class="stamp">v0.6.36</div>
 </main>
 
 <script src="vendor/pizzip.js"></script>
@@ -1043,6 +1043,10 @@ function initCanvas(railEl){
         // continuous drag -- this picks up that second tap.
         if (svg._armPoint != null){
           svg._sel = svg._armPoint;
+          // A plain tap fires no pointermove at all, so point B has to
+          // land here already -- pointermove (if they do drag instead)
+          // just refines it further before release.
+          const s2 = svg._shapes[svg._sel]; s2.x2 = p.x; s2.y2 = p.y;
           drag = { mode:"meas", snapped:true }; svg.setPointerCapture(e.pointerId);
           renderCanvas(svg); return;
         }
@@ -1054,6 +1058,7 @@ function initCanvas(railEl){
       if (svg._tool==="line"){
         if (svg._armPoint != null){
           svg._sel = svg._armPoint;
+          const s2 = svg._shapes[svg._sel]; s2.x2 = p.x; s2.y2 = p.y;
           drag = { mode:"draw", snapped:true }; svg.setPointerCapture(e.pointerId);
           renderCanvas(svg); return;
         }
