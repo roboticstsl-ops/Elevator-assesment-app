@@ -2,7 +2,7 @@
 <html lang="en">
 <head>
 <meta charset="utf-8">
-<meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1">
+<meta name="viewport" content="width=device-width, initial-scale=1, minimum-scale=1, maximum-scale=4">
 <title>Site Visit Sheet — Elevator Assessment &amp; RF/LTE Scan</title>
 <style>
   :root {
@@ -119,7 +119,7 @@
   .draw-tools button.on { background:var(--hd); color:#fff; }
   .draw-tools.icon-only button { padding:0; width:44px; height:44px; font-size:20px;
     display:flex; align-items:center; justify-content:center; border-radius:10px; }
-  .draw-canvas { border:1px solid var(--bd); border-radius:var(--r-sm); background:#fff; touch-action:none; width:100%; min-height:280px; }
+  .draw-canvas { border:1px solid var(--bd); border-radius:var(--r-sm); background:#fff; touch-action:pinch-zoom; width:100%; min-height:280px; }
   .draw-canvas.arming { border-color:var(--accent); box-shadow:0 0 0 3px var(--accent-soft); }
   .draw-tools .arm { font-size:12px; color:var(--accent); font-weight:700; }
   .draw-tools .arm:empty { display:none; }
@@ -344,7 +344,7 @@
     <button class="sm ghost" style="width:100%;margin-top:8px" onclick="sendReportTelegram()">✈️ Send to Telegram</button>
   </section>
 
-  <div class="stamp">v0.6.27</div>
+  <div class="stamp">v0.6.28</div>
 </main>
 
 <script src="vendor/pizzip.js"></script>
@@ -950,6 +950,10 @@ function initCanvas(railEl){
     }
   });
   svg.addEventListener("pointerdown", e => {
+    // A second finger landing mid-pinch is not primary -- leave it alone
+    // (no preventDefault, no drawing) so the browser's native pinch-zoom
+    // (touch-action:pinch-zoom on the canvas) can take over instead.
+    if (!e.isPrimary) return;
     e.preventDefault();
     const rawp = canvasPoint(svg, e);
     const creating = svg._activeDim || (svg._tool !== "move");
