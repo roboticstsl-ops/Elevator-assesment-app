@@ -341,7 +341,7 @@
     <button class="sm ghost" style="width:100%;margin-top:8px" onclick="sendReportTelegram()">✈️ Send to Telegram</button>
   </section>
 
-  <div class="stamp">v0.6.36</div>
+  <div class="stamp">v0.6.37</div>
 </main>
 
 <script src="vendor/pizzip.js"></script>
@@ -1022,7 +1022,10 @@ function initCanvas(railEl){
     e.preventDefault();
     const rawp = canvasPoint(svg, e);
     const creating = svg._activeDim || (svg._tool !== "move");
-    const p = creating ? snapPoint(svg._shapes, rawp, -1) : rawp;
+    // Placing point B of an armed Line/Measure must not snap back onto
+    // point A itself -- exclude that shape from the snap candidates,
+    // same as any other in-progress edit already does via skip=svg._sel.
+    const p = creating ? snapPoint(svg._shapes, rawp, svg._armPoint != null ? svg._armPoint : -1) : rawp;
     if (svg._activeDim){
       snap();
       const s = { t:"dim", x1:p.x, y1:p.y, x2:p.x, y2:p.y, label:svg._activeDim };
