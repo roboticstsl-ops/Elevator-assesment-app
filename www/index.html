@@ -341,7 +341,7 @@
     <button class="sm ghost" style="width:100%;margin-top:8px" onclick="sendReportTelegram()">✈️ Send to Telegram</button>
   </section>
 
-  <div class="stamp">v0.6.38</div>
+  <div class="stamp">v0.6.39</div>
 </main>
 
 <script src="vendor/pizzip.js"></script>
@@ -415,7 +415,7 @@ function floorLabel(ci){ return floorNames[ci] || defaultFloorLabel(ci); }
 // need; Move to reposition/select, Pen for a rough freehand outline
 // (auto-cleaned into a straight line/box by the same "smart" logic that
 // used to be a toggle -- it's just always on now).
-const SHAPE_TOOLS = [["move","✋","Move"],["measure","📏","Measure"],["pen","✏️","Pen"],["line","╱","Line"]];
+const SHAPE_TOOLS = [["move","✋","Move"],["measure","📏","Measure"],["pen","✏️","Pen"],["line","╱","Line"],["erase","🧽","Eraser"]];
 // Top-railing-only stamps -- each is really just a "rect" shape tagged
 // with a kind, so it reuses the exact same move/resize handles every
 // other box already has, adjustable size for free.
@@ -438,7 +438,7 @@ function drawToolbar(railKey){
   if (railKey === "top"){
     // Top ships with a fixed photo -- no freehand drawing needed, just
     // Move plus the 4 stamps. Icon-only, one compact row for easy reach.
-    const icons = [["move","✋","Move"],["line","╱","Line"]].concat(STAMP_TOOLS);
+    const icons = [["move","✋","Move"],["line","╱","Line"],["erase","🧽","Eraser"]].concat(STAMP_TOOLS);
     return `<div class="draw-tools icon-only">` +
         icons.map(([t,icon,label]) => `<button type="button" data-tool="${t}"${t==="move"?' class="on"':''} title="${label}">${icon}</button>`).join("") +
         `<button type="button" data-act="undo" title="Undo">↩︎</button>` +
@@ -1033,6 +1033,18 @@ function initCanvas(railEl){
     // point A itself -- exclude that shape from the snap candidates,
     // same as any other in-progress edit already does via skip=svg._sel.
     const p = creating ? snapPoint(svg._shapes, rawp, svg._armPoint != null ? svg._armPoint : -1) : rawp;
+    // Eraser: tap whatever is under the finger and delete just that one
+    // shape -- the line you touched, not the whole drawing (that's what
+    // Clear is for). Uses the raw touch point, not the snapped one, so
+    // it deletes exactly what's under your finger.
+    if (svg._tool === "erase"){
+      const hit = hitShape(svg._shapes, rawp);
+      if (hit < 0){ showTip("Nothing there — tap right on the line or shape you want gone."); return; }
+      snap();
+      svg._shapes.splice(hit, 1); svg._sel = -1;
+      renderCanvas(svg); save();
+      return;
+    }
     if (svg._activeDim){
       snap();
       const s = { t:"dim", x1:p.x, y1:p.y, x2:p.x, y2:p.y, label:svg._activeDim };
