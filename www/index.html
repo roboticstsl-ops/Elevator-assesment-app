@@ -341,7 +341,7 @@
     <button class="sm ghost" style="width:100%;margin-top:8px" onclick="sendReportTelegram()">✈️ Send to Telegram</button>
   </section>
 
-  <div class="stamp">v0.6.42</div>
+  <div class="stamp">v0.6.43</div>
 </main>
 
 <script src="vendor/pizzip.js"></script>
@@ -1832,27 +1832,52 @@ function fitBox(w, h, maxW, maxH){
 // A rail's live SVG board -> a PNG data URL, drawn at 2x for a crisp
 // picture in Word. Everything on the board is inline (the background photo
 // is a data URI), so the canvas never gets tainted.
+// Everything the board holds, not just the default 340x240 window --
+// shapes can sit outside it (you can pan, and the view no longer snaps
+// back), and those were getting cropped out of the report.
+function railBounds(svg){
+  let x0 = 0, y0 = 0, x1 = 340, y1 = 240;   // the board itself always counts
+  (svg._shapes || []).forEach(s => {
+    const b = shapeBox(s);
+    if (!isFinite(b.x) || !isFinite(b.y) || !isFinite(b.w) || !isFinite(b.h)) return;
+    x0 = Math.min(x0, b.x); y0 = Math.min(y0, b.y);
+    x1 = Math.max(x1, b.x + b.w); y1 = Math.max(y1, b.y + b.h);
+  });
+  const pad = 10;
+  return [x0 - pad, y0 - pad, (x1 - x0) + pad*2, (y1 - y0) + pad*2];
+}
+// A rail's live SVG board -> a PNG, drawn at 2x for a crisp picture in
+// Word, framed on the whole drawing. Everything on the board is inline
+// (the background photo is a data URI), so the canvas never gets tainted.
 function railPng(svg){
   return new Promise(resolve => {
-    const W = 340, H = 240, SCALE = 2;
+    const vb = railBounds(svg);
+    const W = Math.max(1, Math.round(vb[2])), H = Math.max(1, Math.round(vb[3]));
+    const SCALE = Math.min(2, 1600 / W);   // keep the file sane on a huge board
+    // Re-paint at the full extent first, so the grid and background cover
+    // every corner the picture is about to show, then put the view back.
+    const keep = svg._vb;
+    svg._vb = vb; applyVB(svg); renderCanvas(svg);
     const clone = svg.cloneNode(true);
+    svg._vb = keep; applyVB(svg); renderCanvas(svg);
     clone.setAttribute("xmlns", "http://www.w3.org/2000/svg");
     clone.setAttribute("xmlns:xlink", "http://www.w3.org/1999/xlink");
-    clone.setAttribute("viewBox", "0 0 " + W + " " + H);
+    clone.setAttribute("viewBox", vb.join(" "));
     clone.setAttribute("width", W); clone.setAttribute("height", H);
+    clone.setAttribute("preserveAspectRatio", "none");
     const url = "data:image/svg+xml;base64," + btoa(unescape(encodeURIComponent(new XMLSerializer().serializeToString(clone))));
     const im = new Image();
     im.onload = () => {
       const c = document.createElement("canvas");
-      c.width = W * SCALE; c.height = H * SCALE;
+      c.width = Math.round(W * SCALE); c.height = Math.round(H * SCALE);
       const g = c.getContext("2d");
       g.fillStyle = "#fff"; g.fillRect(0, 0, c.width, c.height);
       g.drawImage(im, 0, 0, c.width, c.height);
       let out = "";
       try { out = c.toDataURL("image/png"); } catch(e){ out = ""; }
-      resolve(out);
+      resolve({ url: out, w: W, h: H });
     };
-    im.onerror = () => resolve("");
+    im.onerror = () => resolve({ url:"", w:W, h:H });
     im.src = url;
   });
 }
@@ -1881,11 +1906,11 @@ async function docxData(s){
     const svg = document.querySelector(`[data-rail="${key}"] [data-canvas]`);
     const drawn = svg && ((svg._shapes || []).length || svg._bgImage);
     if (!drawn && !mine.length) continue;   // nothing to show for this railing
-    const png = svg ? await railPng(svg) : "";
-    const [iw, ih] = fitBox(340, 240, 440, 320);
+    const png = svg ? await railPng(svg) : { url:"", w:340, h:240 };
+    const [iw, ih] = fitBox(png.w, png.h, 440, 330);
     d.rail_imgs.push({
       railing: name,
-      img: imgToken(png, iw, ih),
+      img: imgToken(png.url, iw, ih),
       dims: mine,
       dims_line: mine.map(x => x.L + " = " + x.v + " mm").join("   ·   "),
     });
