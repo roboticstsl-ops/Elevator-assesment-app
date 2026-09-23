@@ -341,7 +341,7 @@
     <button class="sm ghost" style="width:100%;margin-top:8px" onclick="sendReportTelegram()">✈️ Send to Telegram</button>
   </section>
 
-  <div class="stamp">v0.6.34</div>
+  <div class="stamp">v0.6.35</div>
 </main>
 
 <script src="vendor/pizzip.js"></script>
@@ -748,6 +748,13 @@ function renderCanvas(svg){
       : `<line x1="${v[0]}" y1="${g.at}" x2="${v[0]+v[2]}" y2="${g.at}" stroke="#e11d74" stroke-width="1" stroke-dasharray="4 3"/>`;
   });
   if (svg._snapMark) m += `<circle cx="${svg._snapMark.x}" cy="${svg._snapMark.y}" r="6" fill="none" stroke="#1652c9" stroke-width="1.5"/>`;
+  // Point A of a Line/Measure waiting on its second tap -- a plain dot
+  // (zero-length line/meas) is otherwise invisible.
+  if (svg._armPoint != null && svg._shapes[svg._armPoint]){
+    const a = svg._shapes[svg._armPoint];
+    m += `<circle cx="${a.x1}" cy="${a.y1}" r="4" fill="#1652c9"/>`
+      + `<circle cx="${a.x1}" cy="${a.y1}" r="10" fill="none" stroke="#1652c9" stroke-width="1.5" stroke-dasharray="3 2"/>`;
+  }
   svg.innerHTML = m;
 }
 // Replaces window.prompt() inside the fullscreen drawing area -- a native
@@ -809,6 +816,7 @@ function initCanvas(railEl){
   svg._shapes = tpl ? JSON.parse(JSON.stringify(tpl)) : [];
   svg._locked = !!(tpl || svg._bgImage);
   svg._tool = railKey === "top" ? "move" : "measure"; svg._sel = -1; svg._hist = [];
+  svg._armPoint = null;   // index of a Line/Measure shape whose point A is placed, waiting on a second tap for point B
   svg._grid = (railKey === "rear" || railKey === "left"); svg._ortho = true; svg._smart = true; svg._vb = [0,0,340,240];
   let drag = null;
   const tapState = { idx:-1, count:0, time:0 };   // triple-tap-to-delete a stamp
@@ -895,7 +903,14 @@ function initCanvas(railEl){
     hud.textContent = "L " + Math.round(len) + "  ·  " + Math.round(((ang*180/Math.PI)%360+360)%360) + "°";
   };
   const snap = () => { svg._hist.push(JSON.stringify(svg._shapes)); if (svg._hist.length > 50) svg._hist.shift(); };
-  const setTool = t => { svg._tool = t; railEl.querySelectorAll("[data-tool]").forEach(b => b.classList.toggle("on", b.dataset.tool===t)); };
+  const setTool = t => {
+    if (svg._armPoint != null && t !== svg._tool){
+      // Switching tools mid-arm abandons that half-placed point A rather
+      // than leaving an invisible zero-length shape behind.
+      svg._shapes.splice(svg._armPoint, 1); svg._armPoint = null; renderCanvas(svg);
+    }
+    svg._tool = t; railEl.querySelectorAll("[data-tool]").forEach(b => b.classList.toggle("on", b.dataset.tool===t));
+  };
   const clearArm = () => { svg._activeDim = null; svg.classList.remove("arming"); armSpan.textContent = ""; };
   // After drawing a measurement line, ask for the real tape-measured value
   // instead of guessing it from the sketch's pixel length -- that's what
@@ -1023,12 +1038,25 @@ function initCanvas(railEl){
         drag = { mode:"pen", snapped:true }; svg.setPointerCapture(e.pointerId); renderCanvas(svg); return;
       }
       if (svg._tool==="measure"){
+        // A first tap arms point A (see endDrag) and waits for an
+        // independent second tap for point B, instead of forcing one
+        // continuous drag -- this picks up that second tap.
+        if (svg._armPoint != null){
+          svg._sel = svg._armPoint;
+          drag = { mode:"meas", snapped:true }; svg.setPointerCapture(e.pointerId);
+          renderCanvas(svg); return;
+        }
         const s = { t:"meas", x1:p.x, y1:p.y, x2:p.x, y2:p.y };
         svg._shapes.push(s); svg._sel = svg._shapes.length-1;
         drag = { mode:"meas", snapped:true }; svg.setPointerCapture(e.pointerId);
         renderCanvas(svg); return;
       }
       if (svg._tool==="line"){
+        if (svg._armPoint != null){
+          svg._sel = svg._armPoint;
+          drag = { mode:"draw", snapped:true }; svg.setPointerCapture(e.pointerId);
+          renderCanvas(svg); return;
+        }
         const s = { t:"line", x1:p.x, y1:p.y, x2:p.x, y2:p.y };
         svg._shapes.push(s); svg._sel = svg._shapes.length-1;
         drag = { mode:"draw", snapped:true }; svg.setPointerCapture(e.pointerId);
@@ -1193,9 +1221,15 @@ function initCanvas(railEl){
     }
     if (mode==="meas"){
       const s = svg._shapes[svg._sel];
-      const len = Math.round(Math.hypot(s.x2-s.x1, s.y2-s.y1));
-      if (len < 4){ svg._shapes.pop(); svg._sel = -1; }
-      else {
+      const len = Math.hypot(s.x2-s.x1, s.y2-s.y1);
+      if (len < 6){
+        // A tap with (near) no movement places point A and waits for an
+        // independent second tap for point B -- doesn't have to be one
+        // continuous drag. A second tap landing back on point A itself
+        // is just ignored (still armed, still waiting).
+        if (svg._armPoint == null){ svg._armPoint = svg._sel; showTip("Tap the second point to finish the measurement."); }
+      } else {
+        svg._armPoint = null;
         if (!s.label) s.label = nextDimLetter(svg._shapes);
         askMeasurement(s);
       }
@@ -1212,9 +1246,15 @@ function initCanvas(railEl){
           s.w = DW; s.h = DH;
         }
         if (!s.kind) askShapeSize(s);   // plain box (not a Top stamp) -- offer a typed size label
-      } else {
-        if (Math.hypot(s.x2-s.x1, s.y2-s.y1) < 6) s.x2 = s.x1+90;   // a tap with no drag still drops a usable line
-        if (s.t === "line") askShapeSize(s);
+      } else if (s.t === "line"){
+        // Same two-tap idea as Measure: a near-still tap places point A
+        // and waits for an independent second tap for point B.
+        if (Math.hypot(s.x2-s.x1, s.y2-s.y1) < 6){
+          if (svg._armPoint == null){ svg._armPoint = svg._sel; showTip("Tap the second point to finish the line."); }
+        } else {
+          svg._armPoint = null;
+          askShapeSize(s);
+        }
       }
       renderCanvas(svg);
     }
