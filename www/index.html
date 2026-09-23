@@ -345,7 +345,7 @@
     <button class="sm ghost" style="width:100%;margin-top:8px" onclick="sendReportTelegram()">✈️ Send to Telegram</button>
   </section>
 
-  <div class="stamp">v0.6.29</div>
+  <div class="stamp">v0.6.30</div>
 </main>
 
 <script src="vendor/pizzip.js"></script>
@@ -844,7 +844,7 @@ function initCanvas(railEl){
       if (!pts.has(e.pointerId)) return;
       pts.set(e.pointerId, { x:e.clientX, y:e.clientY });
       if (pts.size === 2){
-        const scale = Math.min(1, Math.max(0.4, baseScale * (dist() / baseDist)));
+        const scale = Math.min(3, Math.max(0.4, baseScale * (dist() / baseDist)));
         drawArea.dataset.zoom = scale;
         drawArea.style.transform = `scale(${scale})`;
       }
@@ -943,7 +943,17 @@ function initCanvas(railEl){
   };
   railEl.querySelectorAll("[data-dim]").forEach(inp => {
     inp.addEventListener("focus", () => { svg._activeDim = inp.dataset.dim; svg.classList.add("arming"); armSpan.textContent = "draw " + inp.dataset.dim + " on the board"; });
-    inp.addEventListener("input", () => { if (svg._activeDim === inp.dataset.dim) clearArm(); });
+    inp.addEventListener("input", () => {
+      if (svg._activeDim === inp.dataset.dim) clearArm();
+      // Typing the mm value directly (instead of dragging it on the
+      // board) should update the same number shown on the drawing --
+      // same shape object, so it's one value either way in.
+      const num = parseFloat(inp.value);
+      if (isNaN(num)) return;
+      let changed = false;
+      svg._shapes.forEach(s => { if ((s.t==="dim"||s.t==="meas") && s.label===inp.dataset.dim){ s.value = num; changed = true; } });
+      if (changed){ renderCanvas(svg); save(); }
+    });
   });
   railEl.addEventListener("click", e => {
     if (!e.target.closest(".draw-tools")) return;
