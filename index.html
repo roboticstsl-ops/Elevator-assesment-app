@@ -341,11 +341,12 @@
     <button class="sm ghost" style="width:100%;margin-top:8px" onclick="sendReportTelegram()">✈️ Send to Telegram</button>
   </section>
 
-  <div class="stamp">v0.6.40</div>
+  <div class="stamp">v0.6.41</div>
 </main>
 
 <script src="vendor/pizzip.js"></script>
 <script src="vendor/docxtemplater.js"></script>
+<script src="vendor/imagemodule.js"></script>
 <script>
 const LS_KEY = "svs_draft_v3";
 // Railing diagrams, drawn once and reused across every report -- separate
@@ -1692,11 +1693,15 @@ function collect(){
     desc: p.querySelector('[data-photo="desc"]').value,
     filename: p.querySelector('[data-photo="filename"]').value,
     img: (i => i.hidden ? "" : i.src)(p.querySelector('[data-photo="img"]')),
+    w: (i => i && i.naturalWidth)(p.querySelector('[data-photo="img"]')) || 0,
+    h: (i => i && i.naturalHeight)(p.querySelector('[data-photo="img"]')) || 0,
   }));
   document.querySelectorAll("#panelPhotos .photo-item").forEach(p => s.panelPhotos.push({
     desc: p.querySelector('[data-photo="desc"]').value,
     filename: p.querySelector('[data-photo="filename"]').value,
     img: (i => i.hidden ? "" : i.src)(p.querySelector('[data-photo="img"]')),
+    w: (i => i && i.naturalWidth)(p.querySelector('[data-photo="img"]')) || 0,
+    h: (i => i && i.naturalHeight)(p.querySelector('[data-photo="img"]')) || 0,
   }));
   return s;
 }
@@ -1762,7 +1767,51 @@ function bytesToB64(u8){
   for (let i = 0; i < u8.length; i += chunk) s += String.fromCharCode.apply(null, u8.subarray(i, i + chunk));
   return btoa(s);
 }
-function docxData(s){
+/* ---- images for the .docx (railing drawings + site photos) ----
+   docxtemplater only puts text in the file; the free image module turns a
+   {%tag} into a real picture, and it asks us for the bytes and the size.
+   IMG_SIZES remembers each image's pixel size as we build it, keyed by the
+   data URL, so a wide photo doesn't come out squashed into a square. */
+const IMG_SIZES = new Map();
+function dataUrlToU8(url){
+  const b64 = String(url).split(",")[1] || "";
+  const bin = atob(b64), u8 = new Uint8Array(bin.length);
+  for (let i = 0; i < bin.length; i++) u8[i] = bin.charCodeAt(i);
+  return u8;
+}
+// Fit an image into the page's usable width, keeping its proportions.
+function fitBox(w, h, maxW, maxH){
+  const k = Math.min(maxW / w, maxH / h, 1);
+  return [Math.round(w * k), Math.round(h * k)];
+}
+// A rail's live SVG board -> a PNG data URL, drawn at 2x for a crisp
+// picture in Word. Everything on the board is inline (the background photo
+// is a data URI), so the canvas never gets tainted.
+function railPng(svg){
+  return new Promise(resolve => {
+    const W = 340, H = 240, SCALE = 2;
+    const clone = svg.cloneNode(true);
+    clone.setAttribute("xmlns", "http://www.w3.org/2000/svg");
+    clone.setAttribute("xmlns:xlink", "http://www.w3.org/1999/xlink");
+    clone.setAttribute("viewBox", "0 0 " + W + " " + H);
+    clone.setAttribute("width", W); clone.setAttribute("height", H);
+    const url = "data:image/svg+xml;base64," + btoa(unescape(encodeURIComponent(new XMLSerializer().serializeToString(clone))));
+    const im = new Image();
+    im.onload = () => {
+      const c = document.createElement("canvas");
+      c.width = W * SCALE; c.height = H * SCALE;
+      const g = c.getContext("2d");
+      g.fillStyle = "#fff"; g.fillRect(0, 0, c.width, c.height);
+      g.drawImage(im, 0, 0, c.width, c.height);
+      let out = "";
+      try { out = c.toDataURL("image/png"); } catch(e){ out = ""; }
+      resolve(out);
+    };
+    im.onerror = () => resolve("");
+    im.src = url;
+  });
+}
+async function docxData(s){
   const F = s.fields, d = {};
   ["doc_ref","prepared_by","date","version","project","site_name","client","address","maps_link",
    "elev_oem","elev_model","elev_id","elev_maint","plug_points","checklist_note",
@@ -1773,13 +1822,28 @@ function docxData(s){
   // railings: only the letters that actually have a value show up
   const railOrder = [["top","Top Railing View"],["rear","Rear railing"],["left","Left railing"],["right","Right railing"]];
   d.rail_all = [];
-  railOrder.forEach(([key, name]) => {
+  // Each railing also gets its own block in the report: the drawing as a
+  // real picture, plus that railing's own mm values underneath it.
+  d.rail_imgs = [];
+  for (const [key, name] of railOrder){
     const dims = (s.rails[key] && (s.rails[key].dims || s.rails[key])) || {};
+    const mine = [];
     (RAILS.find(r => r.key === key) || { letters:[] }).letters.forEach(L => {
       const v = String(dims[L] == null ? "" : dims[L]).trim();
-      if (v) d.rail_all.push({ railing:name, L, v });
+      if (v){ d.rail_all.push({ railing:name, L, v }); mine.push({ L, v }); }
     });
-  });
+    const svg = document.querySelector(`[data-rail="${key}"] [data-canvas]`);
+    const drawn = svg && ((svg._shapes || []).length || svg._bgImage);
+    if (!drawn && !mine.length) continue;   // nothing to show for this railing
+    const img = svg ? await railPng(svg) : "";
+    if (img) IMG_SIZES.set(img, fitBox(340, 240, 440, 320));
+    d.rail_imgs.push({
+      railing: name,
+      img,
+      dims: mine,
+      dims_line: mine.map(x => x.L + " = " + x.v + " mm").join("   ·   "),
+    });
+  }
 
   const mkRows = id => rowsFromState(s, id).map(g => ({
     loc: g.loc || "",
@@ -1807,11 +1871,18 @@ function docxData(s){
     d["pin" + (i + 1) + "_use"] = (o && o.use) || "";
     d["pin" + (i + 1) + "_color"] = (o && o.color) || "";
   });
-  d.photos = (s.photos || []).map(p => ({ p_desc: p.desc || "", p_file: p.filename || "" }));
+  // The photo itself rides along as p_img now, not just its filename --
+  // template.docx prints it wherever it has a {%p_img} tag.
+  const photoRow = p => {
+    const img = p.img || "";
+    if (img) IMG_SIZES.set(img, fitBox(p.w || 1200, p.h || 900, 440, 330));
+    return { p_desc: p.desc || "", p_file: p.filename || "", p_img: img };
+  };
+  d.photos = (s.photos || []).map(photoRow);
   // Only reaches the printed report if template.docx has a {#panel_photos}
   // loop tag for it (same convention as {#photos}) -- otherwise docxtemplater
   // just ignores the unused key, so this is safe either way.
-  d.panel_photos = (s.panelPhotos || []).map(p => ({ p_desc: p.desc || "", p_file: p.filename || "" }));
+  d.panel_photos = (s.panelPhotos || []).map(photoRow);
   return d;
 }
 async function buildDocx(){
@@ -1824,8 +1895,17 @@ async function buildDocx(){
   catch (e) { showTip("Template not found — use the installed app."); return null; }
   let out;
   try {
-    const doc = new window.docxtemplater(new PizZip(buf), { paragraphLoop:true, linebreaks:true });
-    doc.render(docxData(collect()));
+    const data = await docxData(collect());
+    // The image module turns every {%tag} in template.docx into a real
+    // picture. It has to go in the constructor -- this docxtemplater is
+    // v4, where attachModule() after the fact throws.
+    const mods = window.ImageModule ? [new window.ImageModule({
+      centered: false,
+      getImage: url => dataUrlToU8(url),
+      getSize: (bin, url) => IMG_SIZES.get(url) || [440, 310],
+    })] : [];
+    const doc = new window.docxtemplater(new PizZip(buf), { paragraphLoop:true, linebreaks:true, modules:mods });
+    doc.render(data);
     out = doc.getZip().generate({ type:"uint8array" });
   } catch (e) {
     const msg = (e && e.properties && e.properties.errors)
