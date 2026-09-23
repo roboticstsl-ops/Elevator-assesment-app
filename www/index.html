@@ -341,7 +341,7 @@
     <button class="sm ghost" style="width:100%;margin-top:8px" onclick="sendReportTelegram()">✈️ Send to Telegram</button>
   </section>
 
-  <div class="stamp">v0.6.37</div>
+  <div class="stamp">v0.6.38</div>
 </main>
 
 <script src="vendor/pizzip.js"></script>
@@ -780,10 +780,17 @@ function askInline(area, message, defVal, cb){
   inp.value = defVal || "";
   (area || document.body).appendChild(ov);
   inp.focus(); inp.select();
+  // The tap that opened this dialog still has a trailing `click` coming
+  // (browsers fire click after pointerup), and it lands on whatever is
+  // now under that spot -- which is this overlay. Without the guard it
+  // instantly dismissed itself, or worse, pressed OK/Cancel, so the
+  // measurement box looked like it never opened at all.
+  const openedAt = Date.now();
+  const fresh = () => Date.now() - openedAt < 400;
   const done = val => { ov.remove(); cb(val); };
-  ov.querySelector("[data-ask-ok]").addEventListener("click", () => done(inp.value));
-  ov.querySelector("[data-ask-cancel]").addEventListener("click", () => done(null));
-  ov.addEventListener("click", e => { if (e.target === ov) done(null); });
+  ov.querySelector("[data-ask-ok]").addEventListener("click", () => { if (!fresh()) done(inp.value); });
+  ov.querySelector("[data-ask-cancel]").addEventListener("click", () => { if (!fresh()) done(null); });
+  ov.addEventListener("click", e => { if (e.target === ov && !fresh()) done(null); });
   inp.addEventListener("keydown", e => {
     if (e.key === "Enter") done(inp.value);
     else if (e.key === "Escape") done(null);
