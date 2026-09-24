@@ -341,7 +341,7 @@
     <button class="sm ghost" style="width:100%;margin-top:8px" onclick="sendReportTelegram()">✈️ Send to Telegram</button>
   </section>
 
-  <div class="stamp">v0.6.44</div>
+  <div class="stamp">v0.6.45</div>
 </main>
 
 <script src="vendor/pizzip.js"></script>
@@ -2025,8 +2025,12 @@ async function buildDocx(){
     return null;
   }
   const site = (collect().fields.site_name || "Site_Visit_Sheet").replace(/[^\w-]+/g, "_");
+  // Stamped filename: every export used to be written over the top of the
+  // last one, so only the most recent survey ever survived on the phone.
+  const t = new Date(), p2 = n => String(n).padStart(2, "0");
+  const stamp = t.getFullYear() + p2(t.getMonth()+1) + p2(t.getDate()) + "-" + p2(t.getHours()) + p2(t.getMinutes());
   return {
-    out, b64: bytesToB64(out), name: site + ".docx",
+    out, b64: bytesToB64(out), name: site + "_" + stamp + ".docx",
     mime: "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
     caption: "Site Visit Sheet — " + (collect().fields.site_name || site),
   };
@@ -2035,7 +2039,10 @@ async function exportDocx(){
   const r = await buildDocx(); if (!r) return;
   const NF = nativePlugin("NativeFile");
   if (NF){
-    try { await NF.saveOpen({ base64: r.b64, name: r.name, mime: r.mime }); showTip("Report generated"); }
+    try {
+      const res = await NF.saveOpen({ base64: r.b64, name: r.name, mime: r.mime });
+      showTip((res && res.savedAt) ? "Saved to " + res.savedAt : "Report generated");
+    }
     catch (e) { showTip("Save failed: " + ((e && (e.message || e.errorMessage)) || "unknown")); }
   } else {
     const url = URL.createObjectURL(new Blob([r.out], { type: r.mime }));
