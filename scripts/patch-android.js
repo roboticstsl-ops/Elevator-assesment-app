@@ -79,6 +79,34 @@ let gradle = fs.readFileSync(gradlePath, "utf8");
 gradle = gradle
   .replace(/versionName\s+"[^"]*"/, `versionName "${version}"`)
   .replace(/versionCode\s+\d+/, `versionCode ${code}`);
+
+/* 4b. pin the debug signing key ------------------------------------------- */
+// `cap add android` regenerates the project every build, and AGP then mints a
+// brand new debug keystore -- so every APK was signed by a different key and
+// could only be installed by uninstalling first, wiping the surveyor's saved
+// drawings and draft. Putting the committed key in the project and naming it
+// explicitly (rather than relying on AGP finding ~/.android/debug.keystore,
+// which it did not) means updates install straight over the top.
+fs.copyFileSync("keys/debug.keystore", "android/app/debug.keystore");
+if (!/signingConfigs\s*\{[^}]*debug/.test(gradle)) {
+  gradle += `
+android {
+    signingConfigs {
+        debug {
+            storeFile file('debug.keystore')
+            storePassword 'android'
+            keyAlias 'androiddebugkey'
+            keyPassword 'android'
+        }
+    }
+    buildTypes {
+        debug {
+            signingConfig signingConfigs.debug
+        }
+    }
+}
+`;
+}
 fs.writeFileSync(gradlePath, gradle);
 
 console.log(`patched: permissions + ${plugins.join(", ")} + MainActivity + version ${version} (code ${code})`);
