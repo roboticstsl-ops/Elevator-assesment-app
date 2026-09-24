@@ -341,7 +341,7 @@
     <button class="sm ghost" style="width:100%;margin-top:8px" onclick="sendReportTelegram()">✈️ Send to Telegram</button>
   </section>
 
-  <div class="stamp">v0.6.43</div>
+  <div class="stamp">v0.6.44</div>
 </main>
 
 <script src="vendor/pizzip.js"></script>
@@ -658,6 +658,31 @@ function shapeSizeLabelSvg(s, cx, cy){
   if (!s.sizeLabel) return "";
   return `<text x="${cx}" y="${cy}" font-size="10" font-weight="700" fill="#1652c9" font-family="Arial, sans-serif" text-anchor="middle" dominant-baseline="central" paint-order="stroke" stroke="#fff" stroke-width="3">${esc(s.sizeLabel)}</text>`;
 }
+// Where a dimension's number sits, and what it says. lox/loy let you drag
+// just the number somewhere readable without moving the line itself.
+function dimLabelText(s){
+  return s.value != null
+    ? (s.label ? esc(s.label) + "=" + s.value + "mm" : s.value + "mm")
+    : (s.label || "");
+}
+function dimLabelPos(s){
+  const ang = Math.atan2(s.y2-s.y1, s.x2-s.x1), tx = 6*Math.sin(ang), ty = -6*Math.cos(ang);
+  const mx = (s.x1+s.x2)/2, my = (s.y1+s.y2)/2;
+  return { x: mx + tx*2.2 + (s.lox || 0), y: my + ty*2.2 + (s.loy || 0) };
+}
+// The number you tapped, if any -- checked before shapes so a label lying
+// on top of other ink still grabs the drag.
+function hitDimLabel(shapes, p){
+  for (let i = shapes.length-1; i >= 0; i--){
+    const s = shapes[i];
+    if (s.t !== "dim" && s.t !== "meas") continue;
+    const t = dimLabelText(s); if (!t) continue;
+    const lp = dimLabelPos(s);
+    const w = Math.max(20, t.length * 6) / 2 + 4, h = 10;
+    if (p.x >= lp.x-w && p.x <= lp.x+w && p.y >= lp.y-h && p.y <= lp.y+h) return i;
+  }
+  return -1;
+}
 function arrowHead(x1,y1,x2,y2){
   const a = Math.atan2(y2-y1, x2-x1), L = 13;
   const p1x = x2 - L*Math.cos(a-0.5), p1y = y2 - L*Math.sin(a-0.5);
@@ -698,18 +723,18 @@ function shapesToSvg(shapes, sel){
       const ang = Math.atan2(s.y2-s.y1, s.x2-s.x1), tx = 6*Math.sin(ang), ty = -6*Math.cos(ang);
       const mx = (s.x1+s.x2)/2, my = (s.y1+s.y2)/2;
       const col = s.t==="meas" ? "#c0392b" : "#1652c9";
-      // Shows the real typed measurement, not the sketch's pixel length --
-      // "A=420mm", in a small filled tag like Top railing's stamps.
-      const label = s.value != null
-        ? (s.label ? esc(s.label) + "=" + s.value + "mm" : s.value + "mm")
-        : (s.label || "");
-      const lx = mx+tx*2.2, ly = my+ty*2.2;
-      const bw = Math.max(22, label.length*6.2), bh = 15;
+      // The real typed measurement, not the sketch's pixel length -- plain
+      // "A=420mm" text with a white halo, no tag box around it.
+      const label = dimLabelText(s);
+      const lp = dimLabelPos(s);
+      // Dragged off the line? Keep it tied to the middle of the run it
+      // measures with a thin leader, so it still reads as that dimension.
+      const off = Math.hypot(lp.x - (mx+tx*2.2), lp.y - (my+ty*2.2));
       m = `<line x1="${s.x1}" y1="${s.y1}" x2="${s.x2}" y2="${s.y2}" stroke="${col}" stroke-width="1.5"${s.t==="meas"?' stroke-dasharray="5 3"':''}/>`
         + `<line x1="${s.x1-tx}" y1="${s.y1-ty}" x2="${s.x1+tx}" y2="${s.y1+ty}" stroke="${col}" stroke-width="1.5"/>`
         + `<line x1="${s.x2-tx}" y1="${s.y2-ty}" x2="${s.x2+tx}" y2="${s.y2+ty}" stroke="${col}" stroke-width="1.5"/>`
-        + (label ? `<rect x="${lx-bw/2}" y="${ly-bh/2}" width="${bw}" height="${bh}" rx="3" fill="#fff" stroke="${col}" stroke-width="1"/>`
-          + `<text x="${lx}" y="${ly}" font-size="10.5" font-weight="700" fill="${col}" font-family="Arial, sans-serif" text-anchor="middle" dominant-baseline="central">${label}</text>` : "");
+        + (label && off > 14 ? `<line x1="${mx}" y1="${my}" x2="${lp.x}" y2="${lp.y}" stroke="${col}" stroke-width="0.8" stroke-dasharray="3 2"/>` : "")
+        + (label ? `<text x="${lp.x}" y="${lp.y}" font-size="11" font-weight="700" fill="${col}" font-family="Arial, sans-serif" text-anchor="middle" dominant-baseline="central" paint-order="stroke" stroke="#fff" stroke-width="3">${label}</text>` : "");
     }
     else m = `<text x="${s.x}" y="${s.y}" font-size="15" fill="#1652c9" font-family="Arial, sans-serif">${esc(s.txt)}</text>`;
     if (i === sel){
@@ -1183,6 +1208,15 @@ function initCanvas(railEl){
       const hit = shapeHandles(svg._shapes[svg._sel]).find(h => Math.hypot(p.x-h.x, p.y-h.y) <= 16);
       if (hit){ drag = { mode:"resize", hk:hit.k, orig:JSON.parse(JSON.stringify(svg._shapes[svg._sel])) }; svg.setPointerCapture(e.pointerId); return; }
     }
+    // Grabbing the number itself nudges only the number -- the measurement
+    // line keeps both its ends exactly where you put them.
+    const li = hitDimLabel(svg._shapes, rawp);
+    if (li >= 0){
+      const ls = svg._shapes[li];
+      svg._sel = li; renderCanvas(svg);
+      drag = { mode:"label", start:rawp, olox: ls.lox || 0, oloy: ls.loy || 0 };
+      svg.setPointerCapture(e.pointerId); return;
+    }
     const i = hitShape(svg._shapes, p);
     svg._sel = i; renderCanvas(svg);
     if (i>=0){
@@ -1204,6 +1238,11 @@ function initCanvas(railEl){
     }
     if (!drag.snapped){ snap(); drag.snapped = true; }
     const raw = canvasPoint(svg, e), s = svg._shapes[svg._sel];
+    if (drag.mode==="label"){
+      s.lox = drag.olox + (raw.x - drag.start.x);
+      s.loy = drag.oloy + (raw.y - drag.start.y);
+      renderCanvas(svg); return;
+    }
     const useSnap = drag.mode==="draw" || drag.mode==="dim" || drag.mode==="resize" || drag.mode==="meas";
     let p = useSnap ? snapPoint(svg._shapes, raw, svg._sel) : raw;
     if (useSnap && drag.mode!=="meas") p = snapGrid(svg._grid, p);
@@ -1866,6 +1905,11 @@ function railPng(svg){
     clone.setAttribute("width", W); clone.setAttribute("height", H);
     clone.setAttribute("preserveAspectRatio", "none");
     const url = "data:image/svg+xml;base64," + btoa(unescape(encodeURIComponent(new XMLSerializer().serializeToString(clone))));
+    // Never let a bad decode hang the whole export -- an Image that
+    // neither loads nor errors would leave the await pending forever and
+    // the report would simply never appear.
+    let done = false;
+    const finish = out => { if (!done){ done = true; resolve({ url: out || "", w: W, h: H }); } };
     const im = new Image();
     im.onload = () => {
       const c = document.createElement("canvas");
@@ -1875,9 +1919,10 @@ function railPng(svg){
       g.drawImage(im, 0, 0, c.width, c.height);
       let out = "";
       try { out = c.toDataURL("image/png"); } catch(e){ out = ""; }
-      resolve({ url: out, w: W, h: H });
+      finish(out);
     };
-    im.onerror = () => resolve({ url:"", w:W, h:H });
+    im.onerror = () => finish("");
+    setTimeout(() => finish(""), 8000);
     im.src = url;
   });
 }
@@ -1907,6 +1952,7 @@ async function docxData(s){
     const drawn = svg && ((svg._shapes || []).length || svg._bgImage);
     if (!drawn && !mine.length) continue;   // nothing to show for this railing
     const png = svg ? await railPng(svg) : { url:"", w:340, h:240 };
+    if (drawn && !png.url) showTip(name + ": the drawing could not be turned into a picture.");
     const [iw, ih] = fitBox(png.w, png.h, 440, 330);
     d.rail_imgs.push({
       railing: name,
