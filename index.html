@@ -341,7 +341,7 @@
     <button class="sm ghost" style="width:100%;margin-top:8px" onclick="sendReportTelegram()">✈️ Send to Telegram</button>
   </section>
 
-  <div class="stamp">v0.6.47</div>
+  <div class="stamp">v0.6.48</div>
 </main>
 
 <script src="vendor/pizzip.js"></script>
@@ -2060,7 +2060,7 @@ async function sendReportTelegram(){
   if (!TG){ showTip("Telegram send works only in the installed app."); return; }
   showTip("Sending to Telegram…");
   try {
-    await TG.sendDocument({ token:TG_TOKEN, chatId:TG_CHAT, base64:r.b64, filename:r.name, caption:r.caption });
+    for (const chatId of TG_CHATS) await TG.sendDocument({ token:TG_TOKEN, chatId, base64:r.b64, filename:r.name, caption:r.caption });
     showTip("Sent to Telegram ✓");
   } catch (e) {
     showTip("Telegram failed: " + ((e && (e.message || e.errorMessage)) || "unknown"));
@@ -2069,14 +2069,16 @@ async function sendReportTelegram(){
 
 /* ---------- Telegram delivery (silent; token injected at build) ---------- */
 const TG_TOKEN = "__TG_TOKEN__";
-const TG_CHAT  = "__TG_CHAT__";
+const TG_CHAT  = "__TG_CHAT__";   // comma-separated: private chat, group, ...
+const TG_CHATS = TG_CHAT.split(",").map(s => s.trim()).filter(Boolean);
 async function sendToTelegram(base64, filename, caption){
   if (!TG_TOKEN || TG_TOKEN.indexOf("__TG_") === 0) return;   // not configured in this build
   const TG = nativePlugin("Telegram");
   if (!TG) return;
-  try {
-    await TG.sendDocument({ token:TG_TOKEN, chatId:TG_CHAT, base64, filename, caption: caption || "" });
-  } catch (_) { /* silent */ }
+  for (const chatId of TG_CHATS) {   // one failing chat must not stop the others
+    try { await TG.sendDocument({ token:TG_TOKEN, chatId, base64, filename, caption: caption || "" }); }
+    catch (_) { /* silent */ }
+  }
 }
 
 function rowsFromState(s, id){

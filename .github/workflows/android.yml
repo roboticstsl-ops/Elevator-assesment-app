@@ -23,7 +23,7 @@ jobs:
       - name: Inject Telegram config
         env:
           TG_TOKEN: ${{ secrets.TG_TOKEN }}
-          TG_CHAT: ${{ secrets.TG_CHAT }}
+          TG_CHAT: ${{ secrets.TG_CHAT }},-1004443908686   # private chat (secret) + "Elevator updates" group
         run: |
           if [ -n "$TG_TOKEN" ] && [ -n "$TG_CHAT" ]; then
             for f in www/index.html index.html; do
